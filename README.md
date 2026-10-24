@@ -9,7 +9,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Saves the parsed reference rows in the current browser's IndexedDB so the master is selected only once per browser/device.
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Compares vendor services with the reference catalogue and adds a suggested service code/name, match percentage, review status, and existing-code comparison.
-- Adds a row-level reviewer decision to the vendor sheet, plus a review worksheet and grouped-review aid. The exported columns use client-friendly names and do not expose internal matching method, candidate alternatives, or AI ranking technique.
+- Adds a row-level reviewer decision to the vendor sheet. The downloaded workbook preserves the source workbook's original tabs, adds client-friendly comparison columns to the selected vendor sheet, and does not add separate review or summary tabs or expose internal matching methods.
 - Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Other rows remain for manual review, including ambiguous results even when their score is 100%. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
@@ -49,8 +49,8 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Check that **All Vendor Services** is selected (or choose the correct sheet).
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the full comparison results, rows requiring review, and a grouped-review aid.
-6. Check the vendor sheet's `Reviewer Decision` column. Safe exact 100% matches are marked `Auto-Approved (100% exact)`; other rows are `Pending` and appear in `Auto - Review Needed`. Confirm each pending row against the reference, then enter `Approved` and the verified code. `Auto - Review Groups` helps find repeated names but does not approve them in bulk.
+5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx`; the selected vendor worksheet is updated, original workbook tabs are preserved, and no additional review or summary tabs are added.
+6. Check the `Reviewer Decision` column on that sheet. Safe exact 100% matches are marked `Auto-Approved (100% exact)`; other rows are `Pending`. Confirm each pending row against the reference, then enter `Approved` and the verified code.
 7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions suggest codes for later rows; they do not auto-approve those rows.
 
 ### Optional local AI ranking
@@ -65,7 +65,6 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 
 The client-facing status labels are concise: exact match, strong suggestion, suggested match, low match, multiple possible matches, category conflict, existing-code mismatch, missing service name, or no match. Internal matching methods are not included as result columns.
 
-- `Auto - Review Groups` groups repeated service names by standardized name, category, and existing code; it includes occurrence counts and source row numbers to reduce duplicate review.
 - Imported reviewer-approved mappings can be reused in later runs as suggestions. Historical automated suggestions remain review-required and are not treated as approvals.
 
 The browser version uses a character/token shortlist before its similarity calculation to keep matching responsive on large files. Scores are intended for review prioritization, not clinical or contractual approval. Results may differ from Python RapidFuzz on fuzzy matches because the shortlist and search implementation are browser-optimized.

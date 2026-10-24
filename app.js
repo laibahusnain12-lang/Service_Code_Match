@@ -8,7 +8,6 @@
   const MASTER_KEY = 'reference-master-v1';
   const DEFAULT_MASTER_SHEET = 'Manual Services updated';
   const DEFAULT_SOURCE_SHEET = 'All Vendor Services';
-  const REVIEW_SHEET_NAME = 'Auto - Review Needed';
   const OUTPUT_COLUMNS = [
     'Auto Candidate Service Code',
     'Auto Candidate Service Display Name',
@@ -544,98 +543,6 @@
       }
     }, 5000);
   }
-  function buildReviewSheet(workbook, rows, sourceRows) {
-    const columns = [
-      'Source Row Number', 'Vendor Name', 'Service Name', 'Standardized Service Name',
-      'Vendor Group', 'Vendor Sub Group', 'Existing Service Code',
-      ...OUTPUT_COLUMNS.map(header => OUTPUT_HEADERS[header] || header)
-    ];
-    const data = [columns];
-    rows.forEach((result, index) => {
-      if (String(result['Reviewer Decision'] || '').startsWith('Auto-Approved (100% exact)')) return;
-      const source = sourceRows[index] || {};
-      data.push(columns.map(column => {
-        if (column === 'Source Row Number') return source.sourceRowNumber || index + 2;
-        if (column === 'Vendor Name') return source.vendorName || '';
-        if (column === 'Service Name') return source.rawName || '';
-        if (column === 'Standardized Service Name') return source.standardizedName || '';
-        if (column === 'Vendor Group') return source.sourceGroup || '';
-        if (column === 'Vendor Sub Group') return source.sourceSubgroup || '';
-        if (column === 'Existing Service Code') return source.existingCode || '';
-        if (column === 'Reviewer Decision') return 'Pending';
-        const resultKey = OUTPUT_KEYS_BY_HEADER[column] || column;
-        if (resultKey === 'Auto Match Status / Review Required') return clientReviewStatus(result[resultKey]);
-        return result[resultKey] == null ? '' : result[resultKey];
-      }));
-    });
-    if (workbook.Sheets[REVIEW_SHEET_NAME]) {
-      delete workbook.Sheets[REVIEW_SHEET_NAME];
-      workbook.SheetNames = workbook.SheetNames.filter(name => name !== REVIEW_SHEET_NAME);
-    }
-    const reviewSheet = XLSX.utils.aoa_to_sheet(data);
-    const reviewScoreColumn = columns.indexOf('Match Percentage');
-    for (let row = 1; row < data.length; row++) {
-      const cell = reviewSheet[XLSX.utils.encode_cell({ r: row, c: reviewScoreColumn })];
-      if (cell) cell.z = '0.##"%"';
-    }
-    XLSX.utils.book_append_sheet(workbook, reviewSheet, REVIEW_SHEET_NAME);
-  }
-
-  function buildReviewGroupsSheet(workbook, rows, sourceRows) {
-    const columns = [
-      'Service Name', 'Standardized Service Name', 'Vendor Group', 'Vendor Sub Group',
-      'Existing Service Code', 'Suggested Service Code', 'Suggested Service Name',
-      'Match Percentage', 'Review Status', 'Occurrences', 'First 100 Source Row Numbers',
-    ];
-    const groups = new Map();
-    rows.forEach((result, index) => {
-      if (String(result['Reviewer Decision'] || '').startsWith('Auto-Approved (100% exact)')) return;
-      const source = sourceRows[index] || {};
-      const key = [
-        normalize(source.rawName), normalize(source.standardizedName), normalize(source.sourceGroup),
-        normalize(source.sourceSubgroup), normalize(source.existingCode)
-      ].join('\u241f');
-      if (!groups.has(key)) {
-        groups.set(key, {
-          'Service Name': source.rawName,
-          'Standardized Service Name': source.standardizedName,
-          'Vendor Group': source.sourceGroup,
-          'Vendor Sub Group': source.sourceSubgroup,
-          'Existing Service Code': source.existingCode,
-          'Suggested Service Code': result['Auto Candidate Service Code'] || '',
-          'Suggested Service Name': result['Auto Candidate Service Display Name'] || result['Auto Candidate Standardized Service Name'] || '',
-          'Match Percentage': result['Auto Match Score'] || 0,
-          'Review Status': clientReviewStatus(result['Auto Match Status / Review Required']),
-          'Occurrences': 0,
-          'First 100 Source Row Numbers': []
-        });
-      }
-      const group = groups.get(key);
-      group.Occurrences++;
-      if (group['First 100 Source Row Numbers'].length < 100) group['First 100 Source Row Numbers'].push(source.sourceRowNumber);
-    });
-
-    const data = [columns];
-    for (const group of groups.values()) {
-      data.push(columns.map(column => column === 'First 100 Source Row Numbers'
-        ? group[column].join(', ')
-        : group[column]));
-    }
-    if (workbook.Sheets['Auto - Review Groups']) {
-      delete workbook.Sheets['Auto - Review Groups'];
-      workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Review Groups');
-    }
-    if (data.length > 1) {
-      const groupsSheet = XLSX.utils.aoa_to_sheet(data);
-      const groupsScoreColumn = columns.indexOf('Match Percentage');
-      for (let row = 1; row < data.length; row++) {
-        const cell = groupsSheet[XLSX.utils.encode_cell({ r: row, c: groupsScoreColumn })];
-        if (cell) cell.z = '0.##"%"';
-      }
-      XLSX.utils.book_append_sheet(workbook, groupsSheet, 'Auto - Review Groups');
-    }
-  }
-
   function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix, sourceRows) {
     const ws = workbook.Sheets[sheetName];
     const obsoleteHeaders = new Set([
@@ -702,8 +609,12 @@
       delete workbook.Sheets['Auto - Ready'];
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Ready');
     }
-    buildReviewSheet(workbook, outputRows, sourceRows);
-    buildReviewGroupsSheet(workbook, outputRows, sourceRows);
+    for (const obsoleteSheet of ['Auto - Review Needed', 'Auto - Review Groups']) {
+      if (workbook.Sheets[obsoleteSheet]) {
+        delete workbook.Sheets[obsoleteSheet];
+        workbook.SheetNames = workbook.SheetNames.filter(name => name !== obsoleteSheet);
+      }
+    }
     return workbook;
   }
 
