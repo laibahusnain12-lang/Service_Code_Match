@@ -450,7 +450,7 @@
     });
   }
 
-  function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix, fileName, stats) {
+  function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix) {
     const ws = workbook.Sheets[sheetName];
     const headers = (sourceMatrix[0] || []).slice();
     const headerMap = new Map();
@@ -486,26 +486,11 @@
     range.e.r = Math.max(range.e.r, outputRows.length);
     ws['!ref'] = XLSX.utils.encode_range(range);
 
-    // Preserve the original worksheet formatting and layout. Only append the generated columns and summary/review sheets.
-
-    // Rebuild the generated summary sheet on every run.
+    // Preserve the original worksheet formatting and layout; remove any summary tab from an older output.
     if (workbook.Sheets['Auto - Summary']) {
       delete workbook.Sheets['Auto - Summary'];
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Summary');
     }
-    const summaryRows = [
-      ['Service Code Matching — Run Summary', 'Value'],
-      ['Input workbook', fileName],
-      ['Source sheet', sheetName],
-      ['Run timestamp', new Date().toLocaleString()],
-      ['Vendor data rows', stats.total],
-      ['Reference service codes', stats.uniqueCodes],
-      [],
-      ['Match Status', 'Rows']
-    ];
-    Object.entries(stats.counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).forEach(([status, count]) => summaryRows.push([status, count]));
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Auto - Summary');
     buildReadySheet(workbook, outputRows);
     buildReviewSheet(workbook, outputRows);
     return workbook;
@@ -556,7 +541,7 @@
           showProgress('Writing Excel output…', 'Adding candidate columns and summary worksheet', 96);
           const stats = message.stats;
           const rows = message.results;
-          latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix, sourceFileName, stats);
+          latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix);
           latestOutputName = `${sourceFileName.replace(/\.(xlsx|xlsm|xlsb|xls)$/i, '')}_AUTO_MATCHED.xlsx`;
           const assigned = rows.filter(row => !isBlank(row['Auto Candidate Service Code'])).length;
           const flaggedTokens = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];

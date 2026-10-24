@@ -10,7 +10,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Checks exact normalized names first, then searches fuzzy candidates.
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
-- Adds an `Auto - Summary` worksheet and downloads a new `.xlsx`; the original `Service Code` column is not overwritten.
+- Adds candidate code, match percentage, status, alternatives, and existing-code comparison columns to the vendor sheet, plus separate ready and review worksheets. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 
 ## Important privacy note
@@ -48,7 +48,7 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Check that **All Vendor Services** is selected (or choose the correct sheet).
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and includes an `Auto - Summary` sheet.
+5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the comparison results, ready rows, and review-needed rows.
 6. Review `Auto Match Status / Review Required` and `Auto Candidate Alternatives` before approving any candidate code.
 
 ## Match interpretation
