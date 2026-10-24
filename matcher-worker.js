@@ -541,6 +541,147 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
   return result;
 }
 
+function llmCandidatePool(input, ctx, fuzzyFind) {
+  const queries = [];
+  if (!blank(input.rawName)) queries.push(input.rawName);
+  if (!blank(input.standardizedName) && norm(input.standardizedName) !== norm(input.rawName)) queries.push(input.standardizedName);
+  const ranked = new Map();
+  for (const query of queries) {
+    for (const [key, score] of fuzzyFind(query)) {
+      if (!ranked.has(key) || score > ranked.get(key)) ranked.set(key, score);
+    }
+  }
+  const pool = [];
+  const sorted = [...ranked.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 8);
+  for (const [key, score] of sorted) {
+    for (const candidate of ctx.nameMap.get(key) || []) {
+      const id = `c${pool.length}`;
+      pool.push({
+        id,
+        key,
+        score,
+        code: candidate.code,
+        display: candidate.display,
+        standard: candidate.standard,
+        group: candidate.group,
+        subgroup: candidate.subgroup
+      });
+      if (pool.length >= 12) return pool;
+    }
+  }
+  return pool;
+}
+
+function llmNeedsReranking(result) {
+  const status = String(result['Auto Match Status / Review Required'] || '').toUpperCase();
+  return status.includes('FUZZY CANDIDATE') || status.includes('LOW CONFIDENCE');
+}
+
+async function callLocalOllama(endpoint, model, batch) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+  try {
+    const response = await fetch(`${endpoint.replace(/\/+$/, '')}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: 'json',
+        options: { temperature: 0 },
+        messages: [
+          {
+            role: 'system',
+            content: 'You rank possible matches for a human reviewer. Select only a supplied candidate index; never invent codes. Compare the service wording, modality, anatomy, and procedure context. Similar spelling alone is not equivalence. If no candidate is clearly supported, return choice null. Return only JSON with this shape: {"rankings":[{"query_id":"q0","choice":0}]}. The choice must be an integer index into that query candidates array or null.'
+          },
+          { role: 'user', content: JSON.stringify(batch) }
+        ]
+      }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}`);
+    const payload = await response.json();
+    const content = payload && payload.message && payload.message.content;
+    if (typeof content !== 'string') throw new Error('Ollama returned an unreadable response');
+    const parsed = JSON.parse(content);
+    if (!parsed || !Array.isArray(parsed.rankings)) throw new Error('Ollama response did not contain rankings');
+    return parsed.rankings;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function rerankWithLocalOllama(message, results, context, fuzzyFind, resultCache, resultInputs, rowIndexes) {
+  const config = message.localAi || {};
+  const candidates = [];
+  for (const [key, result] of resultCache.entries()) {
+    if (!llmNeedsReranking(result)) continue;
+    const input = resultInputs.get(key);
+    const pool = llmCandidatePool(input, context, fuzzyFind);
+    if (!pool.length) continue;
+    candidates.push({ key, input, pool, frequency: (rowIndexes.get(key) || []).length });
+  }
+  candidates.sort((a, b) => b.frequency - a.frequency || norm(a.input.rawName).localeCompare(norm(b.input.rawName)));
+  const limited = candidates.slice(0, Math.max(1, Math.min(1000, Number(config.maxNames) || 100)));
+  let applied = 0;
+  let completed = 0;
+  const batchSize = 8;
+  for (let start = 0; start < limited.length; start += batchSize) {
+    const batchItems = limited.slice(start, start + batchSize).map((item, index) => ({
+      query_id: `q${start + index}`,
+      service: String(item.input.rawName || '').slice(0, 300),
+      standardized: String(item.input.standardizedName || '').slice(0, 300),
+      vendor_group: String(item.input.sourceGroup || '').slice(0, 120),
+      vendor_subgroup: String(item.input.sourceSubgroup || '').slice(0, 120),
+      candidates: item.pool.map(candidate => ({
+        code: candidate.code,
+        display: candidate.display,
+        standardized: candidate.standard,
+        group: candidate.group,
+        subgroup: candidate.subgroup
+      }))
+    }));
+    const rankings = await callLocalOllama(config.endpoint, config.model, batchItems);
+    const answers = new Map(rankings.map(ranking => [ranking.query_id, ranking.choice]));
+    batchItems.forEach((request, index) => {
+      const item = limited[start + index];
+      const selectedIndex = answers.get(request.query_id);
+      if (!Number.isInteger(selectedIndex) || selectedIndex < 0 || selectedIndex >= item.pool.length) return;
+      const selected = item.pool[selectedIndex];
+      const candidateRecords = (context.nameMap.get(selected.key) || []).filter(candidate => candidate.code === selected.code);
+      if (!candidateRecords.length) return;
+      const detail = candidateDetails(candidateRecords);
+      const alternatives = [selected, ...item.pool.filter(candidate => candidate !== selected)];
+      const selectedScore = selected.score;
+      for (const rowIndex of rowIndexes.get(item.key) || []) {
+        const row = results[rowIndex];
+        const rowInput = message.sourceRows[rowIndex] || item.input;
+        row['Auto Candidate Service Code'] = detail.codes.length === 1 ? detail.codes[0] : '';
+        row['Auto Candidate Standardized Service Name'] = detail.standard;
+        row['Auto Candidate Service Display Name'] = detail.display;
+        row['Auto Candidate Group'] = detail.group;
+        row['Auto Candidate Sub Group'] = detail.subgroup;
+        row['Auto Match Score'] = Math.round(selectedScore * 100) / 100;
+        row['Auto Match Method'] = `Local AI reranking (${config.model})`;
+        row['Auto Candidate Alternatives'] = alternatives.map(candidate => `${candidateLabel(candidate)} (${Number(candidate.score).toFixed(1)}%)`).join(' | ').slice(0, 3000);
+        row['Auto Match Status / Review Required'] = detail.codes.length === 1
+          ? 'LOCAL AI SUGGESTION — verify this vendor row manually'
+          : 'AMBIGUOUS LOCAL AI SUGGESTION — multiple codes; verify manually';
+        row['Auto Existing Code Check'] = detail.codes.length === 1
+          ? compareExisting(rowInput.existingCode, detail.codes[0])
+          : 'Ambiguous candidate; existing code not evaluated';
+        if (row['Auto Existing Code Check'].startsWith('CHECK')) {
+          row['Auto Match Status / Review Required'] += '; EXISTING CODE DISAGREEMENT — manual review required';
+        }
+        applied++;
+      }
+    });
+    completed += batchItems.length;
+    self.postMessage({ type: 'llm-progress', completed, total: limited.length, percent: 94 + (completed / Math.max(1, limited.length)) * 2 });
+  }
+  return { applied, considered: limited.length, available: candidates.length };
+}
+
 function processMatching(message) {
   const context = makeIndex(message.masterRecords || [], message.historicalMappings || [], message.approvedMappings || []);
   const fuzzyFind = makeFuzzyFinder(context);
@@ -549,6 +690,8 @@ function processMatching(message) {
   const results = new Array(inputRows.length);
   const counts = Object.create(null);
   const resultCache = new Map();
+  const resultInputs = new Map();
+  const rowIndexes = new Map();
   let completed = 0;
   self.postMessage({ type: 'stage', title: 'Reference catalogue ready', detail: 'Your files are ready to process.', percent: 4 });
 
@@ -564,7 +707,10 @@ function processMatching(message) {
       if (!match) {
         match = matchService(input.rawName, input.standardizedName, '', context, fuzzyFind, thresholds, input);
         resultCache.set(cacheKey, match);
+        resultInputs.set(cacheKey, input);
       }
+      if (!rowIndexes.has(cacheKey)) rowIndexes.set(cacheKey, []);
+      rowIndexes.get(cacheKey).push(completed);
       const rowResult = { ...match };
       const initialStatus = rowResult['Auto Match Status / Review Required'];
       if (initialStatus.startsWith('AMBIGUOUS')) rowResult['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
@@ -584,6 +730,12 @@ function processMatching(message) {
     self.postMessage({ type: 'progress', completed, total: inputRows.length, cacheSize: resultCache.size, percent });
     if (completed < inputRows.length) setTimeout(processBatch, 0);
     else {
+      const finish = (llmSummary = null) => {
+        for (const key of Object.keys(counts)) delete counts[key];
+        results.forEach(row => {
+          const status = row['Auto Match Status / Review Required'];
+          counts[status] = (counts[status] || 0) + 1;
+        });
       const candidateCodes = results.filter(r => !blank(r['Auto Candidate Service Code'])).length;
       self.postMessage({
         type: 'done', results,
@@ -595,9 +747,24 @@ function processMatching(message) {
           uniqueCodes: context.stats.uniqueCodes,
           excludedInactive: context.stats.excludedInactive,
           counts: { ...counts },
-          distinctNameCombinations: resultCache.size
+          distinctNameCombinations: resultCache.size,
+          localLlm: llmSummary
         }
       });
+      };
+      if (message.localAi && message.localAi.enabled) {
+        self.postMessage({ type: 'stage', title: 'Local AI ranking', detail: 'Reranking selected catalogue candidates on this computer.', percent: 94 });
+        rerankWithLocalOllama(message, results, context, fuzzyFind, resultCache, resultInputs, rowIndexes)
+          .then(summary => {
+            self.postMessage({ type: 'llm-status', kind: 'success', message: `Local AI reviewed ${summary.considered} unique service names and reranked ${summary.applied} rows. Every row still requires manual verification.` });
+            if (summary.available > summary.considered) self.postMessage({ type: 'llm-status', kind: '', message: `The local AI limit was ${summary.considered} unique names; remaining results use regular matching.` });
+            finish(summary);
+          })
+          .catch(error => {
+            self.postMessage({ type: 'llm-status', kind: 'error', message: `Local AI ranking unavailable; regular suggestions were kept. ${error.message}` });
+            finish({ applied: 0, considered: 0, unavailable: true });
+          });
+      } else finish();
     }
   }
   setTimeout(processBatch, 0);

@@ -628,8 +628,14 @@
     let sourceData;
     const high = Number($('high-threshold').value);
     const review = Number($('review-threshold').value);
+    const localAiEnabled = $('local-ai-enabled').checked;
+    const localAiModel = $('local-ai-model').value.trim();
+    const localAiMaxNames = Number($('local-ai-max-names').value);
     if (!(review >= 0 && high >= review && high <= 100)) {
       setMessage($('source-message'), 'Thresholds must satisfy 0 ≤ review threshold ≤ high-confidence threshold ≤ 100.', 'error'); return;
+    }
+    if (localAiEnabled && (!localAiModel || !Number.isInteger(localAiMaxNames) || localAiMaxNames < 1 || localAiMaxNames > 1000)) {
+      setMessage($('source-message'), 'Enter an installed local model name and a unique-name limit from 1 to 1,000.', 'error'); return;
     }
     try { sourceData = sourceRowsFromSheet(sourceWorkbook, sourceSheetName); }
     catch (error) { setMessage($('source-message'), error.message, 'error'); return; }
@@ -656,6 +662,8 @@
       clearProgressHint();
       if (message.type === 'stage') showProgress(message.title || 'Matching…', message.detail || '', message.percent || 1);
       if (message.type === 'progress') showProgress('Preparing your results…', `${formatNumber(message.completed)} of ${formatNumber(message.total)} rows processed`, message.percent);
+      if (message.type === 'llm-progress') showProgress('Ranking review suggestions locally…', `${formatNumber(message.completed)} of ${formatNumber(message.total)} unique names`, message.percent);
+      if (message.type === 'llm-status') setMessage($('local-ai-message'), message.message || '', message.kind || '');
       if (message.type === 'error') {
         showProgress('Matching stopped', message.error || 'An unexpected matching error occurred.', 0);
         setMessage($('source-message'), message.error || 'An unexpected error occurred.', 'error');
@@ -711,8 +719,21 @@
       historicalMappings: savedMaster.historicalMappings || [],
       approvedMappings: savedMaster.approvedMappings || [],
       sourceRows,
-      thresholds: { high, review }
+      thresholds: { high, review },
+      localAi: localAiEnabled ? {
+        enabled: true,
+        endpoint: 'http://localhost:11434',
+        model: localAiModel,
+        maxNames: localAiMaxNames
+      } : { enabled: false }
     });
+  });
+
+  $('local-ai-enabled').addEventListener('change', () => {
+    $('local-ai-fields').hidden = !$('local-ai-enabled').checked;
+    setMessage($('local-ai-message'), $('local-ai-enabled').checked
+      ? 'Local AI ranking is optional. Suggestions remain pending for manual verification.'
+      : '');
   });
 
   $('download-btn').addEventListener('click', () => {

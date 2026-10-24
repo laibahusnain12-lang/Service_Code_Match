@@ -177,6 +177,63 @@ body {
   background: #edf7f3;
 }
 
+.local-ai-panel {
+  margin-top: 15px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.local-ai-panel summary {
+  color: #245b68;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.local-ai-panel > p,
+.local-ai-fields small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.local-ai-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-weight: 700;
+}
+
+.local-ai-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #245b68;
+}
+
+.local-ai-fields {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.local-ai-fields label {
+  margin-top: 4px;
+  color: #4a5d56;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.local-ai-fields input {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #cbd9d3;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+}
+
 .status-chip {
   border-radius: 5px;
 }

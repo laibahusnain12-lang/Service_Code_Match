@@ -92,6 +92,19 @@
             <label for="south-sheet">Sheet to process</label>
             <select id="south-sheet"></select>
           </div>
+          <details class="local-ai-panel">
+            <summary>Optional local AI ranking</summary>
+            <p>Uses an Ollama model on this computer to reorder existing catalogue suggestions for the most repeated uncertain service names. Every row still needs manual verification. The percentage remains text similarity, not AI confidence.</p>
+            <label class="local-ai-toggle"><input id="local-ai-enabled" type="checkbox" /> Enable local AI ranking</label>
+            <div class="local-ai-fields" id="local-ai-fields" hidden>
+              <label for="local-ai-model">Installed model name</label>
+              <input id="local-ai-model" type="text" value="qwen2.5:7b" autocomplete="off" />
+              <label for="local-ai-max-names">Maximum unique service names per run</label>
+              <input id="local-ai-max-names" type="number" min="1" max="1000" value="100" />
+              <small>Only service terms, category context, and catalogue candidates are sent to Ollama at localhost. Vendor names, rates, and workbook rows are not sent. Ollama must allow this portal's exact origin.</small>
+            </div>
+            <div class="inline-message" id="local-ai-message" role="status" aria-live="polite"></div>
+          </details>
           <div class="thresholds" hidden>
             <div class="threshold-field"><label for="high-threshold">High-confidence threshold</label><div class="number-wrap"><input id="high-threshold" type="number" min="0" max="100" value="95" /><span>%</span></div></div>
             <div class="threshold-field"><label for="review-threshold">Review threshold</label><div class="number-wrap"><input id="review-threshold" type="number" min="0" max="100" value="80" /><span>%</span></div></div>

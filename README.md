@@ -12,6 +12,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
 - Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a full row-by-row review worksheet and a grouped-review aid. Every vendor row remains pending manual verification; no match is treated as final automatically. It downloads a new `.xlsx` without an `Auto - Summary` or ready-to-accept worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
+- Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
 
 ## Important privacy note
 
@@ -52,6 +53,14 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 6. Verify each vendor row in `Auto - Review Needed` and set its `Reviewer Decision` to `Approved` only after checking the reference. Enter the verified code in `Approved Service Code`; use `Review Notes` for context. `Auto - Review Groups` helps find repeated names but never approves rows in bulk.
 7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions provide suggestions for each new row; every new row remains pending manual verification.
 
+### Optional local AI ranking
+
+1. Install Ollama locally and download a model, for example `ollama pull qwen2.5:7b`.
+2. Configure Ollama to allow the exact portal origin in `OLLAMA_ORIGINS` (for local development, typically `http://localhost:8000`; for a published portal, use its exact HTTPS origin). Restart Ollama after changing the setting. Do not use a wildcard origin on an internet-connected machine.
+3. In the portal, expand **Optional local AI ranking**, enable it, enter the installed model name, and set a limit. Start with 100 unique service names.
+4. The browser sends only service terms, category context, and the candidate catalogue descriptions to Ollama at `localhost:11434`. It does not send vendor names, rates, or whole workbook rows. The model reranks only supplied candidates; it cannot create service codes.
+5. If Ollama is unavailable, the regular matcher output is retained. The displayed match percentage remains the text-similarity score, not AI confidence. Every row still requires manual verification.
+
 ## Match interpretation
 
 - **EXACT MATCH** means the normalized source name matched a reference display/standardized name; it is still a candidate and should be verified.
@@ -67,6 +76,7 @@ The browser version uses a character/token shortlist before its similarity calcu
 ## Requirements / limitations
 
 - A modern browser with Web Workers, IndexedDB, and enough available memory for the selected workbook.
+- Optional local AI ranking requires Ollama, a locally downloaded model, sufficient local compute, and Ollama CORS configuration for the exact portal origin. A local model may be slower than regular matching, so enable it for a limited number of repeated uncertain names first.
 - Internet access is needed to load the SheetJS Excel reader from its official CDN. The workbook contents remain in the browser; the library file is downloaded as a script.
 - GitHub Pages is static hosting; no Python, database, or API server is needed.
 - The downloaded workbook's data and sheets are retained, but SheetJS Community Edition may not preserve every advanced Excel style, macro, external connection, or embedded object. Use an original copy for critical formatted or macro-enabled workbooks.

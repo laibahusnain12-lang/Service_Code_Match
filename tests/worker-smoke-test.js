@@ -4,11 +4,12 @@ const path = require('path');
 const workerPath = path.join(__dirname, '..', 'matcher-worker.js');
 const workerCode = fs.readFileSync(workerPath, 'utf8');
 
-function runWorker(payload) {
+function runWorker(payload, fetchImpl, messages = []) {
   return new Promise((resolve, reject) => {
-    const context = { setTimeout, Uint16Array, Map, Set, Math, JSON, String, Number, Object, Array, Date, Intl, RegExp, Promise };
+    const context = { setTimeout, clearTimeout, Uint16Array, Map, Set, Math, JSON, String, Number, Object, Array, Date, Intl, RegExp, Promise, AbortController, fetch: fetchImpl };
     context.self = context;
     context.postMessage = (message) => {
+      messages.push(message);
       if (message.type === 'done') resolve(message);
       if (message.type === 'error') reject(new Error(message.error));
     };
@@ -83,6 +84,44 @@ function getReviewRows(rows) {
   assert(rows[10]['Auto Match Status / Review Required'].startsWith('BLANK SERVICE NAME'), 'Blank names must be flagged');
   const reviewRows = getReviewRows(rows);
   assert(reviewRows.length === rows.length, 'Every processed row must remain in the manual review queue');
+  const rerankMessages = [];
+  let ollamaCalls = 0;
+  let modelSelectedCode = '';
+  const reranked = await runWorker({
+    type: 'MATCH',
+    masterRecords: [
+      { code: 'RAD001', display: 'Chest X Ray', standard: 'Chest Radiograph', group: 'Radiology', subgroup: 'X-Ray', status: 'Active' },
+      { code: 'RAD002', display: 'Chest CT Scan', standard: 'Chest Computed Tomography', group: 'Radiology', subgroup: 'CT', status: 'Active' }
+    ],
+    sourceRows: [{ rawName: 'Chest imaging', standardizedName: '', existingCode: '' }],
+    thresholds: { high: 95, review: 80 },
+    localAi: { enabled: true, endpoint: 'http://localhost:11434', model: 'test-model', maxNames: 10 }
+  }, async (url, options) => {
+    ollamaCalls++;
+    assert(url === 'http://localhost:11434/api/chat', 'Local LLM requests must use the localhost Ollama endpoint');
+    const request = JSON.parse(options.body);
+    const cases = JSON.parse(request.messages[1].content);
+    const rankings = cases.map(item => {
+      const choice = item.candidates.length - 1;
+      modelSelectedCode = item.candidates[choice].code;
+      return { query_id: item.query_id, choice };
+    });
+    return { ok: true, json: async () => ({ message: { content: JSON.stringify({ rankings }) } }) };
+  }, rerankMessages);
+  assert(ollamaCalls === 1, 'Unique uncertain service terms should be sent in a single bounded local request');
+  assert(reranked.results[0]['Auto Candidate Service Code'] === modelSelectedCode, 'The local model selection should be constrained to the supplied catalogue candidates');
+  assert(reranked.results[0]['Auto Match Status / Review Required'].includes('LOCAL AI SUGGESTION'), `LLM-ranked candidates must still require manual review: ${reranked.results[0]['Auto Match Status / Review Required']}; ${rerankMessages.filter(message => message.type === 'llm-status').map(message => message.message).join(' | ')}`);
+  const fallbackMessages = [];
+  const fallback = await runWorker({
+    type: 'MATCH',
+    masterRecords: [{ code: 'C001', display: 'General Consultation', standard: 'Consultation General', group: 'Consultation', subgroup: 'General', status: 'Active' }],
+    sourceRows: [{ rawName: 'General Consulttion', standardizedName: '', existingCode: '' }],
+    thresholds: { high: 95, review: 80 },
+    localAi: { enabled: true, endpoint: 'http://localhost:11434', model: 'missing-model', maxNames: 10 }
+  }, async () => { throw new Error('Ollama is not running'); }, fallbackMessages);
+  assert(fallback.results[0]['Auto Candidate Service Code'] === 'C001', 'Regular suggestions must be retained if the local model is unavailable');
+  assert(fallbackMessages.some(message => message.type === 'llm-status' && message.kind === 'error'), 'Unavailable local model must produce a visible warning');
   console.log('PASS: exact match, fuzzy candidate, existing-code comparison, ambiguous code protection, blank-name handling.');
-  console.log(`PASS: ${result.stats.total} sample rows processed; ${result.stats.candidateCodes} candidate codes assigned; all ${reviewRows.length} rows flagged for manual review.`);
+  console.log(`PASS: ${result.stats.total} base rows reviewed; all ${reviewRows.length} remain pending manual review.`);
+  console.log('PASS: local model reranking stays within catalogue candidates and safely falls back when unavailable.');
 })().catch((error) => { console.error('FAIL:', error.message); process.exit(1); });
