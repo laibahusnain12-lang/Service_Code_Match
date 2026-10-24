@@ -502,6 +502,7 @@
     ];
     const data = [columns];
     rows.forEach((result, index) => {
+      if (String(result['Reviewer Decision'] || '').startsWith('Auto-Approved (100% exact)')) return;
       const source = sourceRows[index] || {};
       data.push(columns.map(column => {
         if (column === 'Source Row Number') return source.sourceRowNumber || index + 2;
@@ -530,6 +531,7 @@
     ];
     const groups = new Map();
     rows.forEach((result, index) => {
+      if (String(result['Reviewer Decision'] || '').startsWith('Auto-Approved (100% exact)')) return;
       const source = sourceRows[index] || {};
       const key = [
         normalize(source.rawName), normalize(source.standardizedName), normalize(source.sourceGroup),
@@ -594,9 +596,9 @@
     outputRows.forEach((row, index) => {
       const excelRow = index + 1;
       OUTPUT_COLUMNS.forEach(header => {
-        const value = header === 'Reviewer Decision'
-          ? 'Pending'
-          : (row[header] == null ? '' : row[header]);
+        const value = row[header] == null
+          ? (header === 'Reviewer Decision' ? 'Pending' : '')
+          : row[header];
         const cellAddress = XLSX.utils.encode_cell({ r: excelRow, c: outCols[header] });
         if (header === 'Auto Match Score') {
           ws[cellAddress] = { t: 'n', v: Number(value) || 0 };
@@ -679,7 +681,7 @@
           latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix, sourceRows);
           latestOutputName = `${sourceFileName.replace(/\.(xlsx|xlsm|xlsb|xls)$/i, '')}_AUTO_MATCHED.xlsx`;
           const assigned = rows.filter(row => !isBlank(row['Auto Candidate Service Code'])).length;
-          const flagged = rows.length;
+          const flagged = rows.filter(row => !String(row['Reviewer Decision'] || '').startsWith('Auto-Approved (100% exact)')).length;
           $('metric-total').textContent = formatNumber(rows.length);
           $('metric-assigned').textContent = formatNumber(assigned);
           $('metric-review').textContent = formatNumber(flagged);

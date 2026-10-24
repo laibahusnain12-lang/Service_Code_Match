@@ -91,6 +91,22 @@ function compareExisting(existing, candidate) {
 function setAiRecommendation(row) {
   const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
   const check = String(row['Auto Existing Code Check'] || '');
+  const exactUnique = status.startsWith('EXACT MATCH')
+    && Number(row['Auto Match Score']) === 100
+    && !status.includes('CATEGORY CONFLICT')
+    && !status.includes('EXISTING CODE DISAGREEMENT')
+    && !check.startsWith('CHECK')
+    && !blank(row['Auto Candidate Service Code']);
+  if (exactUnique) {
+    row['Auto Match Status / Review Required'] = 'EXACT MATCH — auto-approved (100%, unique code, no conflicts)';
+    row['AI Recommendation'] = 'Auto-approved — exact unique match';
+    row['Reviewer Decision'] = 'Auto-Approved (100% exact)';
+    row['Approved Service Code'] = row['Auto Candidate Service Code'];
+    return;
+  }
+
+  row['Reviewer Decision'] = 'Pending';
+  row['Approved Service Code'] = '';
   if (status.includes('EXISTING CODE DISAGREEMENT') || status.includes('CATEGORY CONFLICT') || status.includes('AMBIGUOUS') || status.includes('LOW CONFIDENCE') || !row['Auto Candidate Service Code']) {
     row['AI Recommendation'] = 'Review carefully';
   } else if (status.includes('LOCAL AI SUGGESTION')) {
@@ -124,6 +140,7 @@ function emptyResult() {
 }
 
 function isReviewRequiredStatus(status) {
+  if (String(status || '').toUpperCase().includes('AUTO-APPROVED (100%')) return false;
   return !blank(status);
 }
 

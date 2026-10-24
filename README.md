@@ -10,7 +10,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Checks exact normalized names first, then searches fuzzy candidates.
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
-- Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a full row-by-row review worksheet and a grouped-review aid. Every vendor row remains pending manual verification; no match is treated as final automatically. It downloads a new `.xlsx` without an `Auto - Summary` or ready-to-accept worksheet; the original `Service Code` column is not overwritten.
+- Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a review worksheet and grouped-review aid. Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Other rows remain for manual review, including ambiguous results even when their score is 100%. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Adds an `AI Recommendation` priority label: strong conflict-free matches are marked for confirmation, conflicts/ambiguities are marked for careful review, and local-LLM-ranked suggestions are marked for verification. These labels never change the human `Reviewer Decision`, which starts as `Pending`.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
@@ -50,9 +50,9 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Check that **All Vendor Services** is selected (or choose the correct sheet).
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the full comparison results, a row-by-row review worksheet, and a grouped-review aid.
-6. Verify each vendor row in `Auto - Review Needed` and set its `Reviewer Decision` to `Approved` only after checking the reference. Enter the verified code in `Approved Service Code`; use `Review Notes` for context. `Auto - Review Groups` helps find repeated names but never approves rows in bulk.
-7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions provide suggestions for each new row; every new row remains pending manual verification.
+5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the full comparison results, rows requiring review, and a grouped-review aid.
+6. Check the vendor sheet's `Reviewer Decision` column. Safe exact 100% matches are marked `Auto-Approved (100% exact)`; other rows are `Pending` and appear in `Auto - Review Needed`. Confirm each pending row against the reference, then enter `Approved` and the verified code. `Auto - Review Groups` helps find repeated names but does not approve them in bulk.
+7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions suggest codes for later rows; they do not auto-approve those rows.
 
 ### Optional local AI ranking
 
@@ -60,11 +60,11 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Configure Ollama to allow the exact portal origin in `OLLAMA_ORIGINS` (for local development, typically `http://localhost:8000`; for a published portal, use its exact HTTPS origin). Restart Ollama after changing the setting. Do not use a wildcard origin on an internet-connected machine.
 3. In the portal, expand **Optional local AI ranking**, enable it, enter the installed model name, and set a limit. Start with 100 unique service names.
 4. The browser sends only service terms, category context, and the candidate catalogue descriptions to Ollama at `localhost:11434`. It does not send vendor names, rates, or whole workbook rows. The model reranks only supplied candidates; it cannot create service codes.
-5. If Ollama is unavailable, the regular matcher output is retained. The displayed match percentage remains the text-similarity score, not AI confidence. Every row still requires manual verification.
+5. If Ollama is unavailable, the regular matcher output is retained. The displayed match percentage remains the text-similarity score, not AI confidence. AI-ranked suggestions require manual verification; only safe exact 100% unique matches are auto-approved.
 
 ## Match interpretation
 
-- **EXACT MATCH** means the normalized source name matched a reference display/standardized name; it is still a candidate and should be verified.
+- **EXACT MATCH** means the normalized source name matched a reference display/standardized name. A 100% exact match is auto-approved only when its code is unique and there is no category conflict or existing-code disagreement.
 - **HIGH-CONFIDENCE FUZZY CANDIDATE** means the text similarity meets the high threshold but is not an exact match.
 - **FUZZY CANDIDATE** / **LOW CONFIDENCE** requires manual review.
 - **AMBIGUOUS** means the matching reference name points to multiple service codes or top candidates tie across codes; the candidate code is left blank to avoid guessing.

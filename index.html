@@ -128,10 +128,10 @@
         <div class="metric-grid">
           <div class="metric-card"><span class="metric-label">ROWS PROCESSED</span><strong id="metric-total">—</strong><span class="metric-foot">Rows in selected sheet</span></div>
           <div class="metric-card"><span class="metric-label">CANDIDATE CODES</span><strong id="metric-assigned">—</strong><span class="metric-foot">Suggested, not yet approved</span></div>
-          <div class="metric-card"><span class="metric-label">ROWS TO VERIFY</span><strong id="metric-review">—</strong><span class="metric-foot">Every vendor row requires review</span></div>
+          <div class="metric-card"><span class="metric-label">ROWS TO VERIFY</span><strong id="metric-review">—</strong><span class="metric-foot">Excludes safe exact 100% matches</span></div>
         </div>
         <div class="status-table-wrap"><div class="table-title">Match status breakdown</div><table class="status-table"><thead><tr><th>Status</th><th class="numeric">Rows</th></tr></thead><tbody id="status-breakdown"></tbody></table></div>
-        <div class="results-note"><strong>Recommendation guide:</strong> “Strong candidate” means confirm the row; “AI-ranked” means verify the suggestion; “Review carefully” highlights conflicts or ambiguity. These are prioritization hints only. Set <em>Reviewer Decision</em> to Approved only after checking the row.</div>
+        <div class="results-note"><strong>Approval guide:</strong> a 100% exact name match is auto-approved only when it has one unique code and no category or existing-code conflict. Ambiguous or conflicting rows remain for review even with a 100% name score. AI-ranked suggestions always require verification.</div>
       </section>
 
     </main>
