@@ -22,7 +22,7 @@
     'Review Notes'
   ];
   const OUTPUT_HEADERS = {
-    'Auto Candidate Service Code': 'Suggested Service Code',
+    'Auto Candidate Service Code': 'Suggested Code to Select',
     'Auto Candidate Service Display Name': 'Suggested Service Name',
     'Auto Candidate Group': 'Suggested Group',
     'Auto Candidate Sub Group': 'Suggested Sub Group',
@@ -301,7 +301,7 @@
       const matrix = rowsForSheet(workbook, sheetName);
       const headers = matrix[0] || [];
       const nameCol = chooseColumn(headers, ['Service Name', 'Vendor Service Name'], false);
-      const codeCol = chooseColumn(headers, ['Auto Candidate Service Code', 'Suggested Service Code'], false);
+      const codeCol = chooseColumn(headers, ['Auto Candidate Service Code', 'Suggested Code to Select', 'Suggested Service Code'], false);
       if (nameCol == null || codeCol == null) continue;
 
       const displayCol = chooseColumn(headers, ['Auto Candidate Service Display Name', 'Suggested Service Name', 'Matched Display Name'], false);
@@ -712,7 +712,6 @@
       if (message.type === 'done') {
         try {
           showProgress('Writing Excel output…', 'Preparing the comparison and review sheets', 96);
-          const stats = message.stats;
           const rows = message.results;
           latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix, sourceRows);
           latestOutputName = `${sourceFileName.replace(/\.(xlsx|xlsm|xlsb|xls)$/i, '')}_AUTO_MATCHED.xlsx`;
@@ -721,13 +720,6 @@
           $('metric-total').textContent = formatNumber(rows.length);
           $('metric-assigned').textContent = formatNumber(assigned);
           $('metric-review').textContent = formatNumber(flagged);
-          $('status-breakdown').innerHTML = '';
-          Object.entries(stats.counts).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).forEach(([status, count]) => {
-            const tr = document.createElement('tr');
-            const tdStatus = document.createElement('td'); tdStatus.textContent = clientReviewStatus(status);
-            const tdCount = document.createElement('td'); tdCount.className = 'numeric'; tdCount.textContent = formatNumber(count);
-            tr.append(tdStatus, tdCount); $('status-breakdown').appendChild(tr);
-          });
           $('results-caption').textContent = `${latestOutputName} · Original service-code values were not overwritten.`;
           $('results-panel').hidden = false;
           showProgress('Matching completed', 'Output is ready. Click Download Excel to save it to your computer.', 100);

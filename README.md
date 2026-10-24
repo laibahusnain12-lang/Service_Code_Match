@@ -8,9 +8,9 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you select the reference sheet (defaults to `Manual Services updated`).
 - Saves the parsed reference rows in the current browser's IndexedDB so the master is selected only once per browser/device.
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
-- Compares vendor services with the reference catalogue and adds a suggested service code/name, match percentage, review status, and existing-code comparison.
+- Compares vendor services with the reference catalogue and adds a `Suggested Code to Select`, suggested service name, match percentage, review status, and existing-code comparison.
 - Adds a row-level reviewer decision to the vendor sheet. The downloaded workbook preserves the source workbook's original tabs, adds client-friendly comparison columns to the selected vendor sheet, includes other possible codes for ambiguous matches, and does not add separate review or summary tabs or expose internal matching methods.
-- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Ambiguous rows include a suggested code, ranked using an existing code and matching vendor categories when available, plus the other possible matches; they remain pending until reviewed. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
+- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Ambiguous rows include a suggested code to select, ranked using an existing code and matching vendor categories when available, plus the other possible matches; they remain pending until reviewed. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
 
