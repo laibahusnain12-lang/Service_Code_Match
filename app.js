@@ -8,10 +8,7 @@
   const MASTER_KEY = 'reference-master-v1';
   const DEFAULT_MASTER_SHEET = 'Manual Services updated';
   const DEFAULT_SOURCE_SHEET = 'All Vendor Services';
-  const READY_SHEET_NAME = 'Auto - Ready';
   const REVIEW_SHEET_NAME = 'Auto - Review Needed';
-  const REVIEW_TOKENS = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'AMBIGUOUS APPROVED MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];
-  const READY_TOKENS = ['EXACT MATCH', 'HIGH-CONFIDENCE FUZZY CANDIDATE', 'APPROVED MAPPING'];
   const OUTPUT_COLUMNS = [
     'Auto Candidate Service Code',
     'Auto Candidate Standardized Service Name',
@@ -22,7 +19,10 @@
     'Auto Match Method',
     'Auto Match Status / Review Required',
     'Auto Candidate Alternatives',
-    'Auto Existing Code Check'
+    'Auto Existing Code Check',
+    'Reviewer Decision',
+    'Approved Service Code',
+    'Review Notes'
   ];
 
   const $ = (id) => document.getElementById(id);
@@ -495,41 +495,31 @@
       }
     }, 5000);
   }
-  function buildFilteredSheet(workbook, rows, sheetName, predicate) {
-    const data = [OUTPUT_COLUMNS.slice()];
-    for (const row of rows || []) {
-      if (!predicate(row)) continue;
-      data.push(OUTPUT_COLUMNS.map(header => row[header] == null ? '' : row[header]));
-    }
-    if (data.length === 1) {
-      if (workbook.Sheets[sheetName]) {
-        delete workbook.Sheets[sheetName];
-        workbook.SheetNames = workbook.SheetNames.filter(name => name !== sheetName);
-      }
-      return workbook;
-    }
-    const filteredSheet = XLSX.utils.aoa_to_sheet(data);
-    if (workbook.Sheets[sheetName]) {
-      delete workbook.Sheets[sheetName];
-      workbook.SheetNames = workbook.SheetNames.filter(name => name !== sheetName);
-    }
-    XLSX.utils.book_append_sheet(workbook, filteredSheet, sheetName);
-    return workbook;
-  }
-
-  function buildReadySheet(workbook, rows) {
-    return buildFilteredSheet(workbook, rows, READY_SHEET_NAME, row => {
-      const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
-      return READY_TOKENS.some(token => status.includes(token)) && !status.includes('CATEGORY CONFLICT') && !status.includes('EXISTING CODE DISAGREEMENT');
+  function buildReviewSheet(workbook, rows, sourceRows) {
+    const columns = [
+      'Source Row Number', 'Vendor Name', 'Service Name', 'Standardized Service Name',
+      'Vendor Group', 'Vendor Sub Group', 'Existing Service Code', ...OUTPUT_COLUMNS
+    ];
+    const data = [columns];
+    rows.forEach((result, index) => {
+      const source = sourceRows[index] || {};
+      data.push(columns.map(column => {
+        if (column === 'Source Row Number') return source.sourceRowNumber || index + 2;
+        if (column === 'Vendor Name') return source.vendorName || '';
+        if (column === 'Service Name') return source.rawName || '';
+        if (column === 'Standardized Service Name') return source.standardizedName || '';
+        if (column === 'Vendor Group') return source.sourceGroup || '';
+        if (column === 'Vendor Sub Group') return source.sourceSubgroup || '';
+        if (column === 'Existing Service Code') return source.existingCode || '';
+        if (column === 'Reviewer Decision') return 'Pending';
+        return result[column] == null ? '' : result[column];
+      }));
     });
-  }
-
-  function buildReviewSheet(workbook, rows) {
-    return buildFilteredSheet(workbook, rows, REVIEW_SHEET_NAME, row => {
-      const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
-      if (status.includes('HIGH-CONFIDENCE FUZZY CANDIDATE')) return false;
-      return REVIEW_TOKENS.some(token => status.includes(token));
-    });
+    if (workbook.Sheets[REVIEW_SHEET_NAME]) {
+      delete workbook.Sheets[REVIEW_SHEET_NAME];
+      workbook.SheetNames = workbook.SheetNames.filter(name => name !== REVIEW_SHEET_NAME);
+    }
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(data), REVIEW_SHEET_NAME);
   }
 
   function buildReviewGroupsSheet(workbook, rows, sourceRows) {
@@ -537,16 +527,10 @@
       'Service Name', 'Standardized Service Name', 'Vendor Group', 'Vendor Sub Group',
       'Existing Service Code', 'Suggested Service Code', 'Suggested Service Name',
       'Match Percentage', 'Match Status', 'Occurrences', 'First 100 Source Row Numbers',
-      'Reviewer Decision', 'Approved Service Code', 'Review Notes'
     ];
     const groups = new Map();
     rows.forEach((result, index) => {
       const source = sourceRows[index] || {};
-      const status = String(result['Auto Match Status / Review Required'] || '').toUpperCase();
-      if (status.includes('HIGH-CONFIDENCE FUZZY CANDIDATE') && !status.includes('EXISTING CODE DISAGREEMENT')) return;
-      const needsReview = REVIEW_TOKENS.some(token => status.includes(token))
-        || (String(result['Auto Existing Code Check'] || '').startsWith('CHECK'));
-      if (!needsReview || isBlank(source.rawName)) return;
       const key = [
         normalize(source.rawName), normalize(source.standardizedName), normalize(source.sourceGroup),
         normalize(source.sourceSubgroup), normalize(source.existingCode)
@@ -563,10 +547,7 @@
           'Match Percentage': result['Auto Match Score'] || 0,
           'Match Status': result['Auto Match Status / Review Required'] || '',
           'Occurrences': 0,
-          'First 100 Source Row Numbers': [],
-          'Reviewer Decision': 'Pending',
-          'Approved Service Code': '',
-          'Review Notes': ''
+          'First 100 Source Row Numbers': []
         });
       }
       const group = groups.get(key);
@@ -612,7 +593,9 @@
     outputRows.forEach((row, index) => {
       const excelRow = index + 1;
       OUTPUT_COLUMNS.forEach(header => {
-        const value = row[header] == null ? '' : row[header];
+        const value = header === 'Reviewer Decision'
+          ? 'Pending'
+          : (row[header] == null ? '' : row[header]);
         const cellAddress = XLSX.utils.encode_cell({ r: excelRow, c: outCols[header] });
         if (header === 'Auto Match Score') {
           ws[cellAddress] = { t: 'n', v: Number(value) || 0 };
@@ -630,8 +613,11 @@
       delete workbook.Sheets['Auto - Summary'];
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Summary');
     }
-    buildReadySheet(workbook, outputRows);
-    buildReviewSheet(workbook, outputRows);
+    if (workbook.Sheets['Auto - Ready']) {
+      delete workbook.Sheets['Auto - Ready'];
+      workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Ready');
+    }
+    buildReviewSheet(workbook, outputRows, sourceRows);
     buildReviewGroupsSheet(workbook, outputRows, sourceRows);
     return workbook;
   }
@@ -684,8 +670,7 @@
           latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix, sourceRows);
           latestOutputName = `${sourceFileName.replace(/\.(xlsx|xlsm|xlsb|xls)$/i, '')}_AUTO_MATCHED.xlsx`;
           const assigned = rows.filter(row => !isBlank(row['Auto Candidate Service Code'])).length;
-          const flaggedTokens = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];
-          const flagged = rows.filter(row => flaggedTokens.some(token => String(row['Auto Match Status / Review Required'] || '').toUpperCase().includes(token))).length;
+          const flagged = rows.length;
           $('metric-total').textContent = formatNumber(rows.length);
           $('metric-assigned').textContent = formatNumber(assigned);
           $('metric-review').textContent = formatNumber(flagged);

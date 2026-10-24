@@ -64,11 +64,11 @@
             <button class="button button-ghost button-small" id="clear-master-btn" type="button">Clear</button>
           </div>
           <div class="decision-import">
-            <div><strong>Reuse reviewed decisions</strong><p>Import a previous result after setting a row to Approved and entering its approved service code.</p></div>
+              <div><strong>Use prior decisions as suggestions</strong><p>Import a reviewed result. Previous decisions can suggest a code, but every new vendor row still needs verification.</p></div>
             <label class="button button-secondary button-small" for="approved-file">Choose reviewed workbook</label>
             <input class="file-input" type="file" id="approved-file" accept=".xlsx,.xls,.xlsm,.xlsb" />
             <span class="file-name" id="approved-file-name">No file selected</span>
-            <button class="button button-secondary button-small" id="import-approved-btn" type="button" disabled>Import decisions</button>
+            <button class="button button-secondary button-small" id="import-approved-btn" type="button" disabled>Import suggestions</button>
           </div>
           <div class="inline-message" id="approved-message" role="status" aria-live="polite"></div>
           <div class="inline-message" id="master-message" role="status" aria-live="polite"></div>
@@ -115,7 +115,7 @@
         <div class="metric-grid">
           <div class="metric-card"><span class="metric-label">ROWS PROCESSED</span><strong id="metric-total">—</strong><span class="metric-foot">Rows in selected sheet</span></div>
           <div class="metric-card"><span class="metric-label">CANDIDATE CODES</span><strong id="metric-assigned">—</strong><span class="metric-foot">Suggested, not yet approved</span></div>
-          <div class="metric-card"><span class="metric-label">REVIEW REQUIRED</span><strong id="metric-review">—</strong><span class="metric-foot">Ambiguous or lower confidence</span></div>
+          <div class="metric-card"><span class="metric-label">ROWS TO VERIFY</span><strong id="metric-review">—</strong><span class="metric-foot">Every vendor row requires review</span></div>
         </div>
         <div class="status-table-wrap"><div class="table-title">Match status breakdown</div><table class="status-table"><thead><tr><th>Status</th><th class="numeric">Rows</th></tr></thead><tbody id="status-breakdown"></tbody></table></div>
         <div class="results-note"><strong>Approval reminder:</strong> suggested service codes should be reviewed by your organisation's authorised service-code owner before use.</div>

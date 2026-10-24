@@ -103,30 +103,11 @@ function emptyResult() {
 }
 
 function isReviewRequiredStatus(status) {
-  if (blank(status)) return false;
-  const upper = String(status).toUpperCase();
-  if (upper.includes('EXISTING CODE DISAGREEMENT')) return true;
-  if (upper.includes('HIGH-CONFIDENCE FUZZY CANDIDATE')) return false;
-  return ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'AMBIGUOUS APPROVED MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT']
-    .some(token => upper.includes(token));
-}
-
-function isReadyStatus(status) {
-  if (blank(status)) return false;
-  const upper = String(status).toUpperCase();
-  if (upper.includes('EXISTING CODE DISAGREEMENT')) return false;
-  if (upper.startsWith('APPROVED MAPPING') && !upper.includes('CATEGORY CONFLICT')) return true;
-  if (upper.startsWith('EXACT MATCH') && !upper.includes('CATEGORY CONFLICT')) return true;
-  if (upper.includes('HIGH-CONFIDENCE FUZZY CANDIDATE') && !upper.includes('CATEGORY CONFLICT')) return true;
-  return false;
+  return !blank(status);
 }
 
 function collectReviewRows(rows) {
   return (rows || []).filter(row => isReviewRequiredStatus(row['Auto Match Status / Review Required']));
-}
-
-function collectReadyRows(rows) {
-  return (rows || []).filter(row => isReadyStatus(row['Auto Match Status / Review Required']));
 }
 
 function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []) {
@@ -485,8 +466,8 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
     result['Auto Match Method'] = `Reviewer-approved mapping (${query.label})`;
     result['Auto Candidate Alternatives'] = candidates.map(candidate => candidateLabel(candidate)).join(' | ');
     result['Auto Match Status / Review Required'] = detail.categoryConflict
-      ? 'APPROVED MAPPING — catalogue category conflict needs review'
-      : 'APPROVED MAPPING — previously reviewed';
+      ? 'REVIEWER MAPPING SUGGESTION — catalogue category conflict; verify this row'
+      : 'REVIEWER MAPPING SUGGESTION — verify this row';
     result['Auto Existing Code Check'] = compareExisting(existing, codes[0]);
     return result;
   }

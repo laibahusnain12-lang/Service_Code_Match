@@ -10,7 +10,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Checks exact normalized names first, then searches fuzzy candidates.
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
-- Adds candidate code, match percentage, status, alternatives, and existing-code comparison columns to the vendor sheet, plus separate ready, review-needed, and grouped-review worksheets. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
+- Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a full row-by-row review worksheet and a grouped-review aid. Every vendor row remains pending manual verification; no match is treated as final automatically. It downloads a new `.xlsx` without an `Auto - Summary` or ready-to-accept worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 
 ## Important privacy note
@@ -48,9 +48,9 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Check that **All Vendor Services** is selected (or choose the correct sheet).
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the comparison results, ready rows, review-needed rows, and a grouped review queue.
-6. In `Auto - Review Groups`, set `Reviewer Decision` to `Approved`, enter the final code in `Approved Service Code`, and optionally add review notes. Keep uncertain decisions as `Pending`.
-7. On the next visit, select that reviewed output in **Reuse reviewed decisions** and click **Import decisions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Category context is checked when those decisions are reused.
+5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the full comparison results, a row-by-row review worksheet, and a grouped-review aid.
+6. Verify each vendor row in `Auto - Review Needed` and set its `Reviewer Decision` to `Approved` only after checking the reference. Enter the verified code in `Approved Service Code`; use `Review Notes` for context. `Auto - Review Groups` helps find repeated names but never approves rows in bulk.
+7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions provide suggestions for each new row; every new row remains pending manual verification.
 
 ## Match interpretation
 
