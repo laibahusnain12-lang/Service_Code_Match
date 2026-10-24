@@ -66,11 +66,13 @@ function getReviewRows(rows) {
   assert(rows.length === 11, 'Expected eleven processed test rows');
   assert(rows[0]['Auto Candidate Service Code'] === 'C001', 'Exact code should be assigned');
   assert(rows[0]['Auto Existing Code Check'] === 'Existing South code agrees with candidate', 'Existing-code comparison should be reported');
+  assert(rows[0]['AI Recommendation'] === 'Strong candidate — confirm row', 'Conflict-free exact matches should be prioritized for confirmation');
   assert(rows[1]['Auto Candidate Service Code'] === 'C001', 'A fuzzy candidate should be returned for the misspelled/truncated name');
   assert(rows[1]['Auto Match Status / Review Required'].startsWith('FUZZY CANDIDATE'), 'A truncated service name should remain in manual review');
   assert(rows[2]['Auto Candidate Service Code'] === 'C003', 'A recognized medical abbreviation should find its catalogue term');
   assert(rows[2]['Auto Match Status / Review Required'].startsWith('MEDICAL TERM VARIANT'), 'A medical abbreviation match must require review');
   assert(rows[3]['Auto Match Status / Review Required'].includes('EXISTING CODE DISAGREEMENT'), 'A candidate that differs from the existing code must require review');
+  assert(rows[3]['AI Recommendation'] === 'Review carefully', 'Existing-code disagreements must be prioritized for careful review');
   assert(rows[4]['Auto Candidate Service Code'] === 'C003', 'A unique historical service mapping should return its prior code');
   assert(rows[4]['Auto Match Status / Review Required'].startsWith('HISTORICAL MAPPING'), 'Historical mappings must remain review-required');
   assert(rows[5]['Auto Candidate Service Code'] === '', 'Conflicting historical mappings must not auto-assign a code');
@@ -111,6 +113,8 @@ function getReviewRows(rows) {
   assert(ollamaCalls === 1, 'Unique uncertain service terms should be sent in a single bounded local request');
   assert(reranked.results[0]['Auto Candidate Service Code'] === modelSelectedCode, 'The local model selection should be constrained to the supplied catalogue candidates');
   assert(reranked.results[0]['Auto Match Status / Review Required'].includes('LOCAL AI SUGGESTION'), `LLM-ranked candidates must still require manual review: ${reranked.results[0]['Auto Match Status / Review Required']}; ${rerankMessages.filter(message => message.type === 'llm-status').map(message => message.message).join(' | ')}`);
+  assert(reranked.results[0]['AI Recommendation'] === 'AI-ranked candidate — verify', 'AI-ranked results should be labeled for reviewer verification');
+  assert(reranked.results[0]['Reviewer Decision'] !== 'Approved', 'AI ranking must not write a human approval decision');
   const fallbackMessages = [];
   const fallback = await runWorker({
     type: 'MATCH',

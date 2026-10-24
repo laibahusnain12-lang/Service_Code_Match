@@ -11,7 +11,8 @@ const OUTPUT_COLUMNS = [
   'Auto Match Method',
   'Auto Match Status / Review Required',
   'Auto Candidate Alternatives',
-  'Auto Existing Code Check'
+  'Auto Existing Code Check',
+  'AI Recommendation'
 ];
 
 const normalizationCache = new Map();
@@ -87,6 +88,25 @@ function compareExisting(existing, candidate) {
   if (String(existing).trim().toLocaleLowerCase() === String(candidate).trim().toLocaleLowerCase()) return 'Existing South code agrees with candidate';
   return 'CHECK — existing South code differs from candidate';
 }
+function setAiRecommendation(row) {
+  const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
+  const check = String(row['Auto Existing Code Check'] || '');
+  if (status.includes('EXISTING CODE DISAGREEMENT') || status.includes('CATEGORY CONFLICT') || status.includes('AMBIGUOUS') || status.includes('LOW CONFIDENCE') || !row['Auto Candidate Service Code']) {
+    row['AI Recommendation'] = 'Review carefully';
+  } else if (status.includes('LOCAL AI SUGGESTION')) {
+    row['AI Recommendation'] = 'AI-ranked candidate — verify';
+  } else if (status.includes('REVIEWER MAPPING SUGGESTION')) {
+    row['AI Recommendation'] = 'Previously confirmed mapping — verify';
+  } else if (status.startsWith('EXACT MATCH') && (check.includes('agrees') || check.includes('No existing'))) {
+    row['AI Recommendation'] = 'Strong candidate — confirm row';
+  } else if (status.includes('HIGH-CONFIDENCE FUZZY CANDIDATE') && (check.includes('agrees') || check.includes('No existing'))) {
+    row['AI Recommendation'] = 'Likely candidate — verify row';
+  } else if (status.includes('HISTORICAL MAPPING')) {
+    row['AI Recommendation'] = 'Prior match — verify';
+  } else {
+    row['AI Recommendation'] = 'Review carefully';
+  }
+}
 function emptyResult() {
   return {
     'Auto Candidate Service Code': '',
@@ -98,7 +118,8 @@ function emptyResult() {
     'Auto Match Method': 'None',
     'Auto Match Status / Review Required': 'UNMATCHED — no candidate found',
     'Auto Candidate Alternatives': '',
-    'Auto Existing Code Check': 'No candidate assigned'
+    'Auto Existing Code Check': 'No candidate assigned',
+    'AI Recommendation': 'Review carefully',
   };
 }
 
@@ -673,6 +694,7 @@ async function rerankWithLocalOllama(message, results, context, fuzzyFind, resul
         if (row['Auto Existing Code Check'].startsWith('CHECK')) {
           row['Auto Match Status / Review Required'] += '; EXISTING CODE DISAGREEMENT — manual review required';
         }
+        setAiRecommendation(row);
         applied++;
       }
     });
@@ -722,6 +744,10 @@ function processMatching(message) {
           }
         }
       } else rowResult['Auto Existing Code Check'] = initialStatus.startsWith('BLANK SERVICE NAME') ? 'No service name; code not evaluated' : 'No unambiguous candidate code';
+      if (rowResult['Auto Existing Code Check'].startsWith('CHECK') && !rowResult['Auto Match Status / Review Required'].includes('EXISTING CODE DISAGREEMENT')) {
+        rowResult['Auto Match Status / Review Required'] += '; EXISTING CODE DISAGREEMENT — manual review required';
+      }
+      setAiRecommendation(rowResult);
       const status = rowResult['Auto Match Status / Review Required'];
       results[completed] = rowResult;
       counts[status] = (counts[status] || 0) + 1;

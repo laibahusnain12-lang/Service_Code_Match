@@ -11,6 +11,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Checks exact normalized names first, then searches fuzzy candidates.
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
 - Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a full row-by-row review worksheet and a grouped-review aid. Every vendor row remains pending manual verification; no match is treated as final automatically. It downloads a new `.xlsx` without an `Auto - Summary` or ready-to-accept worksheet; the original `Service Code` column is not overwritten.
+- Adds an `AI Recommendation` priority label: strong conflict-free matches are marked for confirmation, conflicts/ambiguities are marked for careful review, and local-LLM-ranked suggestions are marked for verification. These labels never change the human `Reviewer Decision`, which starts as `Pending`.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
 

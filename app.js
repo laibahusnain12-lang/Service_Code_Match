@@ -526,7 +526,7 @@
     const columns = [
       'Service Name', 'Standardized Service Name', 'Vendor Group', 'Vendor Sub Group',
       'Existing Service Code', 'Suggested Service Code', 'Suggested Service Name',
-      'Match Percentage', 'Match Status', 'Occurrences', 'First 100 Source Row Numbers',
+      'Match Percentage', 'AI Recommendation', 'Match Status', 'Occurrences', 'First 100 Source Row Numbers',
     ];
     const groups = new Map();
     rows.forEach((result, index) => {
@@ -545,6 +545,7 @@
           'Suggested Service Code': result['Auto Candidate Service Code'] || '',
           'Suggested Service Name': result['Auto Candidate Service Display Name'] || result['Auto Candidate Standardized Service Name'] || '',
           'Match Percentage': result['Auto Match Score'] || 0,
+          'AI Recommendation': result['AI Recommendation'] || 'Review carefully',
           'Match Status': result['Auto Match Status / Review Required'] || '',
           'Occurrences': 0,
           'First 100 Source Row Numbers': []
