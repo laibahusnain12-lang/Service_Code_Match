@@ -10,8 +10,8 @@
   const DEFAULT_SOURCE_SHEET = 'All Vendor Services';
   const READY_SHEET_NAME = 'Auto - Ready';
   const REVIEW_SHEET_NAME = 'Auto - Review Needed';
-  const REVIEW_TOKENS = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];
-  const READY_TOKENS = ['EXACT MATCH', 'HIGH-CONFIDENCE FUZZY CANDIDATE'];
+  const REVIEW_TOKENS = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'AMBIGUOUS APPROVED MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];
+  const READY_TOKENS = ['EXACT MATCH', 'HIGH-CONFIDENCE FUZZY CANDIDATE', 'APPROVED MAPPING'];
   const OUTPUT_COLUMNS = [
     'Auto Candidate Service Code',
     'Auto Candidate Standardized Service Name',
@@ -218,6 +218,42 @@
     return [];
   }
 
+  function approvedMappingsFromWorkbook(workbook) {
+    const mappings = [];
+    for (const sheetName of workbook.SheetNames) {
+      const matrix = rowsForSheet(workbook, sheetName);
+      const headers = matrix[0] || [];
+      const decisionCol = chooseColumn(headers, ['Reviewer Decision'], false);
+      const nameCol = chooseColumn(headers, ['Service Name'], false);
+      const codeCol = chooseColumn(headers, ['Approved Service Code'], false);
+      if (decisionCol == null || nameCol == null || codeCol == null) continue;
+      const groupCol = chooseColumn(headers, ['Vendor Group'], false);
+      const subgroupCol = chooseColumn(headers, ['Vendor Sub Group'], false);
+      for (const row of matrix.slice(1)) {
+        if (normalize(getCell(row, decisionCol)) !== 'approved') continue;
+        const sourceName = getCell(row, nameCol);
+        const code = getCell(row, codeCol);
+        if (!sourceName || !code) continue;
+        mappings.push({
+          sourceName,
+          code,
+          group: getCell(row, groupCol),
+          subgroup: getCell(row, subgroupCol)
+        });
+      }
+    }
+    return mappings;
+  }
+
+  function mergeApprovedMappings(...mappingLists) {
+    const merged = new Map();
+    for (const mapping of mappingLists.flat()) {
+      const key = [normalize(mapping.sourceName), normalize(mapping.group), normalize(mapping.subgroup), String(mapping.code || '').trim().toUpperCase()].join('\u241f');
+      if (mapping.sourceName && mapping.code) merged.set(key, mapping);
+    }
+    return [...merged.values()];
+  }
+
   function sourceRowsFromSheet(workbook, sheetName) {
     const matrix = rowsForSheet(workbook, sheetName);
     if (!matrix.length) throw new Error('The selected South worksheet is empty.');
@@ -225,13 +261,19 @@
     const serviceCol = chooseColumn(headers, ['Service Name', 'Service Display Name', 'Vendor Service Name']);
     const standardCol = chooseColumn(headers, ['Standardized Service Name', 'Standarized Service Name', 'Standardised Service Name'], false);
     const existingCodeCol = chooseColumn(headers, ['Service Code', 'Standardized Service Code', 'Ser. Code'], false);
+    const groupCol = chooseColumn(headers, ['Group', 'Vendor Group'], false);
+    const subgroupCol = chooseColumn(headers, ['Sub Group', 'Subgroup', 'Vendor Sub Group'], false);
+    const vendorCol = chooseColumn(headers, ['Vendor Name', 'Provider Name'], false);
     const rows = matrix.slice(1).map((row, index) => ({
       sourceRowNumber: index + 2,
       rawName: getCell(row || [], serviceCol),
       standardizedName: getCell(row || [], standardCol),
-      existingCode: getCell(row || [], existingCodeCol)
+      existingCode: getCell(row || [], existingCodeCol),
+      sourceGroup: getCell(row || [], groupCol),
+      sourceSubgroup: getCell(row || [], subgroupCol),
+      vendorName: getCell(row || [], vendorCol)
     }));
-    return { rows, matrix, headers };
+    return { rows, matrix, headers, groupCol, subgroupCol, vendorCol };
   }
 
   function setChip(chip, label, ready) {
@@ -262,7 +304,10 @@
     const historyInfo = master.historicalMappings && master.historicalMappings.length
       ? ` · ${master.historicalMappings.length.toLocaleString()} prior suggestions (review required)`
       : '';
-    $('saved-master-details').textContent = `${master.records.length.toLocaleString()} usable reference records${historyInfo} · ${master.sheetName || DEFAULT_MASTER_SHEET} · saved in this browser`;
+    const approvedInfo = master.approvedMappings && master.approvedMappings.length
+      ? ` · ${master.approvedMappings.length.toLocaleString()} reviewed decisions`
+      : '';
+    $('saved-master-details').textContent = `${master.records.length.toLocaleString()} usable reference records${approvedInfo}${historyInfo} · ${master.sheetName || DEFAULT_MASTER_SHEET} · saved in this browser`;
     setChip($('master-chip'), 'Ready', true);
     setMessage($('master-message'), 'Ready. You do not need to select the reference workbook again in this browser unless the master changes.', 'success');
   }
@@ -304,7 +349,11 @@
       const referenceCodes = new Set(records.map(record => record.code));
       const historicalMappings = historicalMappingsFromWorkbook(masterWorkbookPending)
         .filter(mapping => referenceCodes.has(mapping.code));
-      const master = { records, historicalMappings, fileName: masterFileNamePending, sheetName, savedAt: new Date().toISOString(), version: 2 };
+      const approvedMappings = mergeApprovedMappings(
+        savedMaster?.approvedMappings || [],
+        approvedMappingsFromWorkbook(masterWorkbookPending)
+      ).filter(mapping => referenceCodes.has(mapping.code));
+      const master = { records, historicalMappings, approvedMappings, fileName: masterFileNamePending, sheetName, savedAt: new Date().toISOString(), version: 3 };
       await dbPut(MASTER_KEY, master);
       savedMaster = master;
       showMasterReady(master);
@@ -317,6 +366,39 @@
     } finally {
       $('save-master-btn').disabled = !masterWorkbookPending;
       updateRunState();
+    }
+  });
+
+  $('approved-file').addEventListener('change', (event) => {
+    const file = event.target.files && event.target.files[0];
+    $('approved-file-name').textContent = file ? file.name : 'No file selected';
+    $('import-approved-btn').disabled = !file || !savedMaster;
+    setMessage($('approved-message'), file ? 'Reviewed workbook selected. Import to save its approved decisions in this browser.' : '');
+  });
+
+  $('import-approved-btn').addEventListener('click', async () => {
+    const file = $('approved-file').files && $('approved-file').files[0];
+    if (!file || !savedMaster) return;
+    $('import-approved-btn').disabled = true;
+    setMessage($('approved-message'), 'Reading approved decisions…');
+    try {
+      const workbook = await readExcelFile(file);
+      const validCodes = new Set(savedMaster.records.map(record => record.code));
+      const imported = approvedMappingsFromWorkbook(workbook).filter(mapping => validCodes.has(mapping.code));
+      savedMaster = {
+        ...savedMaster,
+        approvedMappings: mergeApprovedMappings(savedMaster.approvedMappings || [], imported),
+        decisionsUpdatedAt: new Date().toISOString()
+      };
+      await dbPut(MASTER_KEY, savedMaster);
+      showMasterReady(savedMaster);
+      setMessage($('approved-message'), `${imported.length.toLocaleString()} approved decisions imported. Codes not present in the current catalogue were skipped.`, 'success');
+      $('approved-file').value = '';
+      $('approved-file-name').textContent = 'No file selected';
+    } catch (error) {
+      setMessage($('approved-message'), error.message || 'Could not import approved decisions.', 'error');
+    } finally {
+      $('import-approved-btn').disabled = true;
     }
   });
 
@@ -450,7 +532,64 @@
     });
   }
 
-  function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix) {
+  function buildReviewGroupsSheet(workbook, rows, sourceRows) {
+    const columns = [
+      'Service Name', 'Standardized Service Name', 'Vendor Group', 'Vendor Sub Group',
+      'Existing Service Code', 'Suggested Service Code', 'Suggested Service Name',
+      'Match Percentage', 'Match Status', 'Occurrences', 'First 100 Source Row Numbers',
+      'Reviewer Decision', 'Approved Service Code', 'Review Notes'
+    ];
+    const groups = new Map();
+    rows.forEach((result, index) => {
+      const source = sourceRows[index] || {};
+      const status = String(result['Auto Match Status / Review Required'] || '').toUpperCase();
+      if (status.includes('HIGH-CONFIDENCE FUZZY CANDIDATE') && !status.includes('EXISTING CODE DISAGREEMENT')) return;
+      const needsReview = REVIEW_TOKENS.some(token => status.includes(token))
+        || (String(result['Auto Existing Code Check'] || '').startsWith('CHECK'));
+      if (!needsReview || isBlank(source.rawName)) return;
+      const key = [
+        normalize(source.rawName), normalize(source.standardizedName), normalize(source.sourceGroup),
+        normalize(source.sourceSubgroup), normalize(source.existingCode)
+      ].join('\u241f');
+      if (!groups.has(key)) {
+        groups.set(key, {
+          'Service Name': source.rawName,
+          'Standardized Service Name': source.standardizedName,
+          'Vendor Group': source.sourceGroup,
+          'Vendor Sub Group': source.sourceSubgroup,
+          'Existing Service Code': source.existingCode,
+          'Suggested Service Code': result['Auto Candidate Service Code'] || '',
+          'Suggested Service Name': result['Auto Candidate Service Display Name'] || result['Auto Candidate Standardized Service Name'] || '',
+          'Match Percentage': result['Auto Match Score'] || 0,
+          'Match Status': result['Auto Match Status / Review Required'] || '',
+          'Occurrences': 0,
+          'First 100 Source Row Numbers': [],
+          'Reviewer Decision': 'Pending',
+          'Approved Service Code': '',
+          'Review Notes': ''
+        });
+      }
+      const group = groups.get(key);
+      group.Occurrences++;
+      if (group['First 100 Source Row Numbers'].length < 100) group['First 100 Source Row Numbers'].push(source.sourceRowNumber);
+    });
+
+    const data = [columns];
+    for (const group of groups.values()) {
+      data.push(columns.map(column => column === 'First 100 Source Row Numbers'
+        ? group[column].join(', ')
+        : group[column]));
+    }
+    if (workbook.Sheets['Auto - Review Groups']) {
+      delete workbook.Sheets['Auto - Review Groups'];
+      workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Review Groups');
+    }
+    if (data.length > 1) {
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(data), 'Auto - Review Groups');
+    }
+  }
+
+  function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix, sourceRows) {
     const ws = workbook.Sheets[sheetName];
     const headers = (sourceMatrix[0] || []).slice();
     const headerMap = new Map();
@@ -493,6 +632,7 @@
     }
     buildReadySheet(workbook, outputRows);
     buildReviewSheet(workbook, outputRows);
+    buildReviewGroupsSheet(workbook, outputRows, sourceRows);
     return workbook;
   }
 
@@ -538,10 +678,10 @@
       }
       if (message.type === 'done') {
         try {
-          showProgress('Writing Excel output…', 'Adding candidate columns and summary worksheet', 96);
+          showProgress('Writing Excel output…', 'Preparing the comparison and review sheets', 96);
           const stats = message.stats;
           const rows = message.results;
-          latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix);
+          latestOutputWorkbook = buildOutputWorkbook(activeWorkbook, sourceSheetName, rows, sourceData.matrix, sourceRows);
           latestOutputName = `${sourceFileName.replace(/\.(xlsx|xlsm|xlsb|xls)$/i, '')}_AUTO_MATCHED.xlsx`;
           const assigned = rows.filter(row => !isBlank(row['Auto Candidate Service Code'])).length;
           const flaggedTokens = ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT', 'EXISTING CODE DISAGREEMENT'];
@@ -584,6 +724,7 @@
       type: 'MATCH',
       masterRecords: savedMaster.records,
       historicalMappings: savedMaster.historicalMappings || [],
+      approvedMappings: savedMaster.approvedMappings || [],
       sourceRows,
       thresholds: { high, review }
     });

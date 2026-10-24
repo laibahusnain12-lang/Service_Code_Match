@@ -107,7 +107,7 @@ function isReviewRequiredStatus(status) {
   const upper = String(status).toUpperCase();
   if (upper.includes('EXISTING CODE DISAGREEMENT')) return true;
   if (upper.includes('HIGH-CONFIDENCE FUZZY CANDIDATE')) return false;
-  return ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT']
+  return ['AMBIGUOUS', 'LOW CONFIDENCE', 'FUZZY CANDIDATE', 'MEDICAL TERM VARIANT', 'HISTORICAL MAPPING', 'AMBIGUOUS APPROVED MAPPING', 'UNMATCHED', 'BLANK SERVICE NAME', 'CATEGORY CONFLICT']
     .some(token => upper.includes(token));
 }
 
@@ -115,6 +115,7 @@ function isReadyStatus(status) {
   if (blank(status)) return false;
   const upper = String(status).toUpperCase();
   if (upper.includes('EXISTING CODE DISAGREEMENT')) return false;
+  if (upper.startsWith('APPROVED MAPPING') && !upper.includes('CATEGORY CONFLICT')) return true;
   if (upper.startsWith('EXACT MATCH') && !upper.includes('CATEGORY CONFLICT')) return true;
   if (upper.includes('HIGH-CONFIDENCE FUZZY CANDIDATE') && !upper.includes('CATEGORY CONFLICT')) return true;
   return false;
@@ -128,9 +129,10 @@ function collectReadyRows(rows) {
   return (rows || []).filter(row => isReadyStatus(row['Auto Match Status / Review Required']));
 }
 
-function makeIndex(masterRecords, historicalMappings = []) {
+function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []) {
   const nameMap = new Map();
   const seenByKey = new Map();
+  const codeMap = new Map();
   const uniqueCodes = new Set();
   let indexedCount = 0;
   let excludedInactive = 0;
@@ -146,6 +148,8 @@ function makeIndex(masterRecords, historicalMappings = []) {
     };
     if (!candidate.code) continue;
     if (norm(candidate.status).split(' ').some(word => inactiveWords.has(word))) { excludedInactive++; continue; }
+    if (!codeMap.has(candidate.code)) codeMap.set(candidate.code, []);
+    codeMap.get(candidate.code).push(candidate);
     const signature = JSON.stringify([candidate.code, candidate.display, candidate.standard, candidate.group, candidate.subgroup, candidate.status]);
     let added = false;
     for (const name of [candidate.display, candidate.standard]) {
@@ -162,6 +166,15 @@ function makeIndex(masterRecords, historicalMappings = []) {
   const keys = [...nameMap.keys()].sort();
   const medicalNameMap = new Map();
   const historicalNameMap = new Map();
+  const approvedNameMap = new Map();
+  for (const original of approvedMappings || []) {
+    const key = norm(original.sourceName || original.name);
+    const code = String(original.code || '').trim();
+    if (!key || !code) continue;
+    if (!approvedNameMap.has(key)) approvedNameMap.set(key, new Map());
+    const mappingKey = `${code}\u241f${norm(original.group)}\u241f${norm(original.subgroup)}`;
+    approvedNameMap.get(key).set(mappingKey, { code, group: String(original.group || '').trim(), subgroup: String(original.subgroup || '').trim() });
+  }
   for (const original of historicalMappings || []) {
     const key = norm(original.sourceName || original.name);
     const code = String(original.code || '').trim();
@@ -206,7 +219,7 @@ function makeIndex(masterRecords, historicalMappings = []) {
       tokenIndex.get(token).push(key);
     }
   }
-  return { nameMap, medicalNameMap, historicalNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, stats: {
+  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, stats: {
     referenceCount: indexedCount,
     uniqueNames: nameMap.size,
     uniqueCodes: uniqueCodes.size,
@@ -376,7 +389,7 @@ function isSingleTypoMatch(queryKey, candidateKey) {
   return changedToken;
 }
 
-function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, thresholds) {
+function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, thresholds, sourceContext = {}) {
   const raw = String(rawName || '').trim();
   const standardized = String(standardizedName || '').trim();
   const existing = String(existingCode || '').trim();
@@ -440,6 +453,41 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
       result['Auto Candidate Alternatives'] = [...new Set(candidates.map(candidateLabel))].join(' | ').slice(0, 3000);
       result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
     }
+    return result;
+  }
+
+  for (const query of queries) {
+    const mappings = ctx.approvedNameMap.get(norm(query.value));
+    if (!mappings || !mappings.size) continue;
+    const sourceGroup = norm(sourceContext.sourceGroup);
+    const sourceSubgroup = norm(sourceContext.sourceSubgroup);
+    const compatible = [...mappings.values()].filter(mapping =>
+      (!mapping.group || norm(mapping.group) === sourceGroup)
+      && (!mapping.subgroup || norm(mapping.subgroup) === sourceSubgroup)
+    );
+    const codes = [...new Set(compatible.map(mapping => mapping.code))];
+    if (!compatible.length) continue;
+    if (codes.length !== 1) {
+      resultEmpty['Auto Match Status / Review Required'] = 'AMBIGUOUS APPROVED MAPPING — multiple approved codes';
+      resultEmpty['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+      return resultEmpty;
+    }
+    const candidates = ctx.codeMap.get(codes[0]) || [];
+    const detail = candidateDetails(candidates);
+    if (!candidates.length) continue;
+    const result = { ...resultEmpty };
+    result['Auto Candidate Service Code'] = codes[0];
+    result['Auto Candidate Standardized Service Name'] = detail.standard;
+    result['Auto Candidate Service Display Name'] = detail.display;
+    result['Auto Candidate Group'] = detail.group;
+    result['Auto Candidate Sub Group'] = detail.subgroup;
+    result['Auto Match Score'] = 100;
+    result['Auto Match Method'] = `Reviewer-approved mapping (${query.label})`;
+    result['Auto Candidate Alternatives'] = candidates.map(candidate => candidateLabel(candidate)).join(' | ');
+    result['Auto Match Status / Review Required'] = detail.categoryConflict
+      ? 'APPROVED MAPPING — catalogue category conflict needs review'
+      : 'APPROVED MAPPING — previously reviewed';
+    result['Auto Existing Code Check'] = compareExisting(existing, codes[0]);
     return result;
   }
 
@@ -513,7 +561,7 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
 }
 
 function processMatching(message) {
-  const context = makeIndex(message.masterRecords || [], message.historicalMappings || []);
+  const context = makeIndex(message.masterRecords || [], message.historicalMappings || [], message.approvedMappings || []);
   const fuzzyFind = makeFuzzyFinder(context);
   const inputRows = message.sourceRows || [];
   const thresholds = message.thresholds || { high: 95, review: 80 };
@@ -530,10 +578,10 @@ function processMatching(message) {
       const input = inputRows[completed] || {};
       const rawKey = norm(input.rawName);
       const stdKey = norm(input.standardizedName);
-      const cacheKey = `${rawKey}\u241f${stdKey}`;
+      const cacheKey = `${rawKey}\u241f${stdKey}\u241f${norm(input.sourceGroup)}\u241f${norm(input.sourceSubgroup)}`;
       let match = resultCache.get(cacheKey);
       if (!match) {
-        match = matchService(input.rawName, input.standardizedName, '', context, fuzzyFind, thresholds);
+        match = matchService(input.rawName, input.standardizedName, '', context, fuzzyFind, thresholds, input);
         resultCache.set(cacheKey, match);
       }
       const rowResult = { ...match };

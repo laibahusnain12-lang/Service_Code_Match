@@ -63,6 +63,14 @@
             <div class="saved-master-text"><strong id="saved-master-title">Reference master is ready</strong><span id="saved-master-details"></span></div>
             <button class="button button-ghost button-small" id="clear-master-btn" type="button">Clear</button>
           </div>
+          <div class="decision-import">
+            <div><strong>Reuse reviewed decisions</strong><p>Import a previous result after setting a row to Approved and entering its approved service code.</p></div>
+            <label class="button button-secondary button-small" for="approved-file">Choose reviewed workbook</label>
+            <input class="file-input" type="file" id="approved-file" accept=".xlsx,.xls,.xlsm,.xlsb" />
+            <span class="file-name" id="approved-file-name">No file selected</span>
+            <button class="button button-secondary button-small" id="import-approved-btn" type="button" disabled>Import decisions</button>
+          </div>
+          <div class="inline-message" id="approved-message" role="status" aria-live="polite"></div>
           <div class="inline-message" id="master-message" role="status" aria-live="polite"></div>
         </article>
 

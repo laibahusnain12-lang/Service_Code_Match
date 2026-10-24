@@ -10,7 +10,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Checks exact normalized names first, then searches fuzzy candidates.
 - Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
-- Adds candidate code, match percentage, status, alternatives, and existing-code comparison columns to the vendor sheet, plus separate ready and review worksheets. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
+- Adds candidate code, match percentage, status, alternatives, and existing-code comparison columns to the vendor sheet, plus separate ready, review-needed, and grouped-review worksheets. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 
 ## Important privacy note
@@ -48,8 +48,9 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 2. Check that **All Vendor Services** is selected (or choose the correct sheet).
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the comparison results, ready rows, and review-needed rows.
-6. Review `Auto Match Status / Review Required` and `Auto Candidate Alternatives` before approving any candidate code.
+5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx` and contains the comparison results, ready rows, review-needed rows, and a grouped review queue.
+6. In `Auto - Review Groups`, set `Reviewer Decision` to `Approved`, enter the final code in `Approved Service Code`, and optionally add review notes. Keep uncertain decisions as `Pending`.
+7. On the next visit, select that reviewed output in **Reuse reviewed decisions** and click **Import decisions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Category context is checked when those decisions are reused.
 
 ## Match interpretation
 
@@ -57,6 +58,8 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 - **HIGH-CONFIDENCE FUZZY CANDIDATE** means the text similarity meets the high threshold but is not an exact match.
 - **FUZZY CANDIDATE** / **LOW CONFIDENCE** requires manual review.
 - **AMBIGUOUS** means the matching reference name points to multiple service codes or top candidates tie across codes; the candidate code is left blank to avoid guessing.
+- `Auto - Review Groups` groups repeated service names by standardized name, category, and existing code; it includes occurrence counts and source row numbers to reduce duplicate review.
+- Imported reviewer-approved mappings can be reused in later runs. Historical automated suggestions are always review-required and are not treated as approvals.
 - **BLANK SERVICE NAME** requires manual entry.
 
 The browser version uses a character/token shortlist before its similarity calculation to keep matching responsive on large files. Scores are intended for review prioritization, not clinical or contractual approval. Results may differ from Python RapidFuzz on fuzzy matches because the shortlist and search implementation are browser-optimized.
