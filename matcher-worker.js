@@ -66,6 +66,29 @@ function candidateDetails(candidates) {
   };
 }
 
+function setSuggestedCandidate(result, candidates, sourceContext = {}, existingCode = '') {
+  const sourceGroup = norm(sourceContext.sourceGroup);
+  const sourceSubgroup = norm(sourceContext.sourceSubgroup);
+  const existing = String(existingCode || '').trim().toLocaleLowerCase();
+  const ranked = [...candidates].filter(candidate => !blank(candidate.code)).sort((a, b) => {
+    const score = candidate => (
+      (existing && String(candidate.code).trim().toLocaleLowerCase() === existing ? 4 : 0)
+      + (sourceGroup && norm(candidate.group) === sourceGroup ? 2 : 0)
+      + (sourceSubgroup && norm(candidate.subgroup) === sourceSubgroup ? 1 : 0)
+    );
+    return score(b) - score(a)
+      || String(a.code).localeCompare(String(b.code))
+      || String(a.display || '').localeCompare(String(b.display || ''));
+  });
+  const suggested = ranked[0];
+  if (!suggested) return;
+  result['Auto Candidate Service Code'] = suggested.code;
+  result['Auto Candidate Standardized Service Name'] = suggested.standard || '';
+  result['Auto Candidate Service Display Name'] = suggested.display || '';
+  result['Auto Candidate Group'] = suggested.group || '';
+  result['Auto Candidate Sub Group'] = suggested.subgroup || '';
+}
+
 function candidateLabel(candidate) {
   return `${candidate.display || candidate.standard || ''} [${candidate.code || ''}]`;
 }
@@ -441,6 +464,7 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
         : 'EXACT MATCH — code unique; category conflict needs review';
       result['Auto Existing Code Check'] = compareExisting(existing, result['Auto Candidate Service Code']);
     } else if (detail.codes.length > 1) {
+      setSuggestedCandidate(result, candidates, sourceContext, existing);
       result['Auto Match Status / Review Required'] = 'AMBIGUOUS EXACT MATCH — multiple reference codes';
       result['Auto Candidate Alternatives'] = candidates.map(c => candidateLabel(c)).join(' | ').slice(0, 3000);
       result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
@@ -468,6 +492,7 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
         : 'MEDICAL TERM VARIANT — manual review required';
       result['Auto Existing Code Check'] = compareExisting(existing, detail.codes[0]);
     } else {
+      setSuggestedCandidate(result, candidates, sourceContext, existing);
       result['Auto Match Status / Review Required'] = 'AMBIGUOUS MEDICAL TERM VARIANT — multiple reference codes';
       result['Auto Candidate Alternatives'] = [...new Set(candidates.map(candidateLabel))].join(' | ').slice(0, 3000);
       result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
@@ -488,6 +513,7 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
     if (!compatible.length) continue;
     if (codes.length !== 1) {
       const candidates = codes.flatMap(code => ctx.codeMap.get(code) || []);
+      setSuggestedCandidate(resultEmpty, candidates, sourceContext, existing);
       resultEmpty['Auto Match Status / Review Required'] = 'AMBIGUOUS APPROVED MAPPING — multiple approved codes';
       resultEmpty['Auto Candidate Alternatives'] = candidates.map(candidateLabel).join(' | ').slice(0, 3000);
       resultEmpty['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
@@ -530,6 +556,7 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
       result['Auto Match Status / Review Required'] = 'HISTORICAL MAPPING — prior automated match; manual review required';
       result['Auto Existing Code Check'] = compareExisting(existing, detail.codes[0]);
     } else {
+      setSuggestedCandidate(result, candidates, sourceContext, existing);
       result['Auto Match Status / Review Required'] = 'AMBIGUOUS HISTORICAL MAPPING — multiple codes or categories';
       result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
     }
@@ -565,9 +592,12 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
   const tiedCodes = new Set();
   tiedKeys.forEach(key => (ctx.nameMap.get(key) || []).forEach(c => { if (c.code) tiedCodes.add(c.code); }));
   if (detail.codes.length > 1) {
+    setSuggestedCandidate(result, bestCandidates, sourceContext, existing);
     result['Auto Match Status / Review Required'] = 'AMBIGUOUS FUZZY CANDIDATE — multiple codes in reference';
     result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
   } else if (tiedCodes.size > 1) {
+    const tiedCandidates = tiedKeys.flatMap(key => ctx.nameMap.get(key) || []);
+    setSuggestedCandidate(result, tiedCandidates, sourceContext, existing);
     result['Auto Match Status / Review Required'] = 'AMBIGUOUS FUZZY CANDIDATES — top score ties across codes';
     result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
   } else {

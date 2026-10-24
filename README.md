@@ -10,7 +10,7 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
 - Compares vendor services with the reference catalogue and adds a suggested service code/name, match percentage, review status, and existing-code comparison.
 - Adds a row-level reviewer decision to the vendor sheet. The downloaded workbook preserves the source workbook's original tabs, adds client-friendly comparison columns to the selected vendor sheet, includes other possible codes for ambiguous matches, and does not add separate review or summary tabs or expose internal matching methods.
-- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Other rows remain for manual review, including ambiguous results even when their score is 100%. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
+- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Ambiguous rows include a suggested code, ranked using an existing code and matching vendor categories when available, plus the other possible matches; they remain pending until reviewed. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
 
@@ -41,7 +41,7 @@ Official guide: <https://docs.github.com/en/pages/getting-started-with-github-pa
 3. Check that the reference sheet dropdown says `Manual Services updated`.
 4. Click **Load and save reference master** and wait for the green **Ready** indicator.
 
-Only the needed reference columns are retained in this browser's IndexedDB: service code, display name, standardized name, group, subgroup, and status.
+The reference catalogue and any imported prior suggestions or approvals are retained in this browser's IndexedDB. Catalogue records keep only the service code, display name, standardized name, group, subgroup, and status.
 
 ### Each time you have a new South file
 
@@ -50,8 +50,8 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
 4. Click **Run service matching** and keep the page open until 100% is shown.
 5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx`; the selected vendor worksheet is updated, original workbook tabs are preserved, and no additional review or summary tabs are added.
-6. Check the `Reviewer Decision` column on that sheet. Safe exact 100% matches are marked `Auto-Approved (100% exact)`; other rows are `Pending`. Confirm each pending row against the reference, then enter `Approved` and the verified code.
-7. On the next visit, select that reviewed output in **Use prior decisions as suggestions** and click **Import suggestions**. Only rows marked `Approved` with codes found in the saved catalogue are imported. Imported decisions suggest codes for later rows; they do not auto-approve those rows.
+6. Check the `Reviewer Decision` column on that sheet. Exact 100% matches with one candidate code and no category or existing-code conflict are marked `Auto-Approved (100% exact)`; other rows are `Pending`. Confirm each pending row against the reference, then enter `Approved` and the verified code.
+7. Select a matched workbook in **Use prior matches as suggestions** and click **Import suggestions**. Candidate suggestions and approved decisions with codes found in the saved catalogue are imported. Imported candidates remain review-required; prior approvals suggest codes for later rows but do not auto-approve them.
 
 ### Optional local AI ranking
 
@@ -65,7 +65,7 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 
 The client-facing status labels are concise: exact match, strong suggestion, suggested match, low match, multiple possible matches, category conflict, existing-code mismatch, missing service name, or no match. Internal matching methods are not included as result columns.
 
-- Imported reviewer-approved mappings can be reused in later runs as suggestions. Historical automated suggestions remain review-required and are not treated as approvals.
+- Imported candidate suggestions and reviewer-approved mappings can be reused in later runs as suggestions. Imported suggestions remain review-required and are not treated as approvals.
 
 The browser version uses a character/token shortlist before its similarity calculation to keep matching responsive on large files. Scores are intended for review prioritization, not clinical or contractual approval. Results may differ from Python RapidFuzz on fuzzy matches because the shortlist and search implementation are browser-optimized.
 

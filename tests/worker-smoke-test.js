@@ -57,7 +57,7 @@ function getReviewRows(rows) {
       { rawName: 'Legacy ambiguous test', standardizedName: '', existingCode: '' },
       { rawName: 'Approved cardiac service', standardizedName: '', existingCode: '', sourceGroup: 'Cardiology', sourceSubgroup: 'Diagnostic' },
       { rawName: 'Approved cardiac service', standardizedName: '', existingCode: '', sourceGroup: 'Radiology', sourceSubgroup: 'X-Ray' },
-      { rawName: 'Conflicted Service', standardizedName: '', existingCode: 'C004' },
+      { rawName: 'Conflicted Service', standardizedName: '', existingCode: 'C005', sourceGroup: 'Group B', sourceSubgroup: 'Sub B' },
       { rawName: 'General Consulttion', standardizedName: '', existingCode: '' },
       { rawName: '', standardizedName: '', existingCode: '' },
       { rawName: 'Conflicted Category', standardizedName: '', existingCode: '' }
@@ -82,16 +82,19 @@ function getReviewRows(rows) {
   assert(rows[3]['Reviewer Decision'] === 'Pending', 'Existing-code disagreements must not be auto-approved');
   assert(rows[4]['Auto Candidate Service Code'] === 'C003', 'A unique historical service mapping should return its prior code');
   assert(rows[4]['Auto Match Status / Review Required'].startsWith('HISTORICAL MAPPING'), 'Historical mappings must remain review-required');
-  assert(rows[5]['Auto Candidate Service Code'] === '', 'Conflicting historical mappings must not auto-assign a code');
+  assert(rows[5]['Auto Candidate Service Code'] === 'C004', 'Conflicting historical mappings should still provide a reviewable suggested code');
   assert(rows[5]['Auto Match Status / Review Required'].startsWith('AMBIGUOUS HISTORICAL MAPPING'), 'Conflicting historical mappings must remain ambiguous');
+  assert(rows[5]['Reviewer Decision'] === 'Pending', 'Ambiguous historical suggestions must remain pending');
   assert(rows[6]['Auto Candidate Service Code'] === 'C003', 'A reviewer-approved mapping should be reused in the same category');
   assert(rows[6]['Auto Match Status / Review Required'].startsWith('REVIEWER MAPPING SUGGESTION'), 'A reviewer-approved mapping should remain a row-level suggestion');
   assert(rows[6]['Reviewer Decision'] === 'Pending', 'A prior approval should not auto-approve a new vendor row');
-  assert(rows[7]['Auto Candidate Service Code'] === '', 'A reviewer-approved mapping must not cross into another category');
-  assert(rows[8]['Auto Candidate Service Code'] === '', 'Ambiguous exact matches must not auto-assign a code');
+  assert(!rows[7]['Auto Match Status / Review Required'].startsWith('REVIEWER MAPPING SUGGESTION'), 'A reviewer-approved mapping must not cross into another category');
+  assert(rows[7]['Reviewer Decision'] === 'Pending', 'A suggestion after a category mismatch must remain pending');
+  assert(rows[8]['Auto Candidate Service Code'] === 'C005', 'An existing code and matching category should rank the corresponding ambiguous code as the suggestion');
   assert(rows[8]['Auto Match Status / Review Required'].startsWith('AMBIGUOUS'), 'Ambiguous row should be flagged');
   assert(rows[8]['Auto Candidate Alternatives'].includes('C004') && rows[8]['Auto Candidate Alternatives'].includes('C005'), 'Ambiguous exact matches should return every possible reference code for review');
   assert(rows[8]['Reviewer Decision'] === 'Pending', 'Ambiguous exact matches must remain pending');
+  assert(rows[8]['Approved Service Code'] === '', 'An ambiguous suggested code must not be marked approved');
   assert(rows[9]['Auto Match Status / Review Required'].startsWith('HIGH-CONFIDENCE FUZZY CANDIDATE'), 'High-confidence fuzzy row should be treated as ready');
   assert(rows[10]['Auto Match Status / Review Required'].startsWith('BLANK SERVICE NAME'), 'Blank names must be flagged');
   assert(rows[11]['Auto Match Score'] === 100, 'Category conflict boundary should use a 100% exact name score');

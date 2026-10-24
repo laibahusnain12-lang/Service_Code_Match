@@ -295,6 +295,46 @@
     return mappings;
   }
 
+  function suggestionMappingsFromWorkbook(workbook) {
+    const mappings = [];
+    for (const sheetName of workbook.SheetNames) {
+      const matrix = rowsForSheet(workbook, sheetName);
+      const headers = matrix[0] || [];
+      const nameCol = chooseColumn(headers, ['Service Name', 'Vendor Service Name'], false);
+      const codeCol = chooseColumn(headers, ['Auto Candidate Service Code', 'Suggested Service Code'], false);
+      if (nameCol == null || codeCol == null) continue;
+
+      const displayCol = chooseColumn(headers, ['Auto Candidate Service Display Name', 'Suggested Service Name', 'Matched Display Name'], false);
+      const standardCol = chooseColumn(headers, ['Auto Candidate Standardized Service Name', 'Auto Candidate Service Name', 'Standardized Service Name'], false);
+      const groupCol = chooseColumn(headers, ['Auto Candidate Group', 'Suggested Group'], false);
+      const subgroupCol = chooseColumn(headers, ['Auto Candidate Sub Group', 'Suggested Sub Group'], false);
+      for (const row of matrix.slice(1)) {
+        const sourceName = getCell(row, nameCol);
+        const code = getCell(row, codeCol);
+        if (!sourceName || !code) continue;
+        mappings.push({
+          sourceName,
+          code,
+          display: getCell(row, displayCol),
+          standard: getCell(row, standardCol),
+          group: getCell(row, groupCol),
+          subgroup: getCell(row, subgroupCol),
+          status: 'Imported workbook suggestion; review required'
+        });
+      }
+    }
+    return mappings;
+  }
+
+  function mergeHistoricalMappings(...mappingLists) {
+    const merged = new Map();
+    for (const mapping of mappingLists.flat()) {
+      const key = [normalize(mapping.sourceName), normalize(mapping.group), normalize(mapping.subgroup), String(mapping.code || '').trim().toUpperCase()].join('\u241f');
+      if (mapping.sourceName && mapping.code) merged.set(key, mapping);
+    }
+    return [...merged.values()];
+  }
+
   function mergeApprovedMappings(...mappingLists) {
     const merged = new Map();
     for (const mapping of mappingLists.flat()) {
@@ -423,30 +463,32 @@
     const file = event.target.files && event.target.files[0];
     $('approved-file-name').textContent = file ? file.name : 'No file selected';
     $('import-approved-btn').disabled = !file || !savedMaster;
-    setMessage($('approved-message'), file ? 'Reviewed workbook selected. Import to save its approved decisions in this browser.' : '');
+    setMessage($('approved-message'), file ? 'Matched workbook selected. Import its candidate suggestions and any approved decisions into this browser.' : '');
   });
 
   $('import-approved-btn').addEventListener('click', async () => {
     const file = $('approved-file').files && $('approved-file').files[0];
     if (!file || !savedMaster) return;
     $('import-approved-btn').disabled = true;
-    setMessage($('approved-message'), 'Reading approved decisions…');
+    setMessage($('approved-message'), 'Reading matching suggestions and approved decisions…');
     try {
       const workbook = await readExcelFile(file);
       const validCodes = new Set(savedMaster.records.map(record => record.code));
-      const imported = approvedMappingsFromWorkbook(workbook).filter(mapping => validCodes.has(mapping.code));
+      const importedSuggestions = suggestionMappingsFromWorkbook(workbook).filter(mapping => validCodes.has(mapping.code));
+      const importedApprovals = approvedMappingsFromWorkbook(workbook).filter(mapping => validCodes.has(mapping.code));
       savedMaster = {
         ...savedMaster,
-        approvedMappings: mergeApprovedMappings(savedMaster.approvedMappings || [], imported),
+        historicalMappings: mergeHistoricalMappings(savedMaster.historicalMappings || [], importedSuggestions),
+        approvedMappings: mergeApprovedMappings(savedMaster.approvedMappings || [], importedApprovals),
         decisionsUpdatedAt: new Date().toISOString()
       };
       await dbPut(MASTER_KEY, savedMaster);
       showMasterReady(savedMaster);
-      setMessage($('approved-message'), `${imported.length.toLocaleString()} approved decisions imported. Codes not present in the current catalogue were skipped.`, 'success');
+      setMessage($('approved-message'), `${importedSuggestions.length.toLocaleString()} candidate suggestions and ${importedApprovals.length.toLocaleString()} approved decisions imported. Codes not present in the current catalogue were skipped; suggestions still require review.`, 'success');
       $('approved-file').value = '';
       $('approved-file-name').textContent = 'No file selected';
     } catch (error) {
-      setMessage($('approved-message'), error.message || 'Could not import approved decisions.', 'error');
+      setMessage($('approved-message'), error.message || 'Could not import workbook suggestions.', 'error');
     } finally {
       $('import-approved-btn').disabled = true;
     }
