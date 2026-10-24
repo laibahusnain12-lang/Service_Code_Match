@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1220" />
+  <meta name="description" content="Prepare clear, reviewable service-code workbooks for vendor operations." />
+  <title>Service Code Match Portal</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="client.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="Service Code Match Portal home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" role="img"><path d="M6 5.5h13.5L26 12v14.5H6z"/><path d="M19.5 5.5V12H26M10 17h12M10 21h8"/></svg>
+        </span>
+        <span><strong>Service Code Match</strong><small>Vendor services workspace</small></span>
+      </a>
+      <div class="privacy-pill"><span class="privacy-dot"></span> Files stay on this device</div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="eyebrow-line"></span> VENDOR OPERATIONS</div>
+        <h1>Service code<br /><span>matching workspace.</span></h1>
+        <p class="hero-copy">Prepare a consistent, reviewable service-code workbook from your vendor services.</p>
+        <div class="hero-points">
+          <span><b>01</b> Select reference catalogue</span>
+          <span><b>02</b> Add vendor workbook</span>
+          <span><b>03</b> Review and export</span>
+        </div>
+      </section>
+
+      <section class="notice" aria-label="Privacy notice">
+        <div class="notice-icon" aria-hidden="true">✓</div>
+        <div><strong>Your files stay on this device.</strong><p>Selected workbooks are processed in this browser and are not sent to a matching service. Your reference catalogue is saved only in this browser.</p></div>
+      </section>
+
+      <section class="workflow-grid">
+        <article class="panel" id="reference-panel">
+          <div class="panel-head">
+            <div class="step-label"><span>01</span> REFERENCE CATALOGUE</div>
+            <span class="status-chip" id="master-chip">Not set up</span>
+          </div>
+          <h2>Select your reference</h2>
+          <p class="panel-copy">Choose the approved service catalogue workbook. It will be available for future sessions in this browser.</p>
+          <label class="file-drop" for="master-file" id="master-drop">
+            <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15.5v4h16v-4"/></svg></span>
+            <span class="drop-title">Choose reference Excel file</span>
+            <span class="drop-hint">Excel workbook · Reference catalogue</span>
+            <span class="file-name" id="master-file-name">No file selected</span>
+          </label>
+          <input class="file-input" type="file" id="master-file" accept=".xlsx,.xls,.xlsm,.xlsb" />
+          <div class="field-row" id="master-sheet-row" hidden>
+            <label for="master-sheet">Reference sheet</label>
+            <select id="master-sheet"></select>
+          </div>
+          <button class="button button-primary button-full" id="save-master-btn" disabled>Save reference catalogue</button>
+          <div class="saved-master" id="saved-master" hidden>
+            <div class="saved-master-icon">✓</div>
+            <div class="saved-master-text"><strong id="saved-master-title">Reference master is ready</strong><span id="saved-master-details"></span></div>
+            <button class="button button-ghost button-small" id="clear-master-btn" type="button">Clear</button>
+          </div>
+          <div class="inline-message" id="master-message" role="status" aria-live="polite"></div>
+        </article>
+
+        <article class="panel" id="south-panel">
+          <div class="panel-head">
+            <div class="step-label"><span>02</span> VENDOR WORKBOOK</div>
+            <span class="status-chip status-muted" id="source-chip">Waiting for file</span>
+          </div>
+          <h2>Add a vendor workbook</h2>
+          <p class="panel-copy">Choose the workbook to prepare. Existing service-code values are preserved in the downloaded copy.</p>
+          <label class="file-drop" for="south-file" id="south-drop">
+            <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M4 15.5v4h16v-4"/></svg></span>
+            <span class="drop-title">Choose vendor workbook</span>
+            <span class="drop-hint">Excel workbook · Vendor services</span>
+            <span class="file-name" id="south-file-name">No file selected</span>
+          </label>
+          <input class="file-input" type="file" id="south-file" accept=".xlsx,.xls,.xlsm,.xlsb" />
+          <div class="field-row" id="south-sheet-row" hidden>
+            <label for="south-sheet">Sheet to process</label>
+            <select id="south-sheet"></select>
+          </div>
+          <div class="thresholds" hidden>
+            <div class="threshold-field"><label for="high-threshold">High-confidence threshold</label><div class="number-wrap"><input id="high-threshold" type="number" min="0" max="100" value="95" /><span>%</span></div></div>
+            <div class="threshold-field"><label for="review-threshold">Review threshold</label><div class="number-wrap"><input id="review-threshold" type="number" min="0" max="100" value="80" /><span>%</span></div></div>
+          </div>
+          <button class="button button-primary button-full" id="run-btn" disabled>Run service matching <span aria-hidden="true">→</span></button>
+          <div class="inline-message" id="source-message" role="status" aria-live="polite"></div>
+        </article>
+      </section>
+
+      <section class="progress-panel" id="progress-panel" hidden>
+        <div class="progress-heading"><div><span class="step-label">MATCHING IN PROGRESS</span><h2 id="progress-title">Preparing your workbook…</h2></div><span class="progress-number" id="progress-number">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-footer"><span id="progress-detail">Starting…</span><span>Please keep this tab open</span></div>
+      </section>
+
+      <section class="results-panel" id="results-panel" hidden>
+        <div class="results-head">
+          <div><div class="step-label"><span>03</span> RESULTS</div><h2>Your candidate workbook is ready</h2><p id="results-caption">Download the output and review flagged matches before approval.</p></div>
+          <button class="button button-primary" id="download-btn">Download Excel <span aria-hidden="true">↓</span></button>
+        </div>
+        <div class="metric-grid">
+          <div class="metric-card"><span class="metric-label">ROWS PROCESSED</span><strong id="metric-total">—</strong><span class="metric-foot">Rows in selected sheet</span></div>
+          <div class="metric-card"><span class="metric-label">CANDIDATE CODES</span><strong id="metric-assigned">—</strong><span class="metric-foot">Suggested, not yet approved</span></div>
+          <div class="metric-card"><span class="metric-label">REVIEW REQUIRED</span><strong id="metric-review">—</strong><span class="metric-foot">Ambiguous or lower confidence</span></div>
+        </div>
+        <div class="status-table-wrap"><div class="table-title">Match status breakdown</div><table class="status-table"><thead><tr><th>Status</th><th class="numeric">Rows</th></tr></thead><tbody id="status-breakdown"></tbody></table></div>
+        <div class="results-note"><strong>Approval reminder:</strong> suggested service codes should be reviewed by your organisation's authorised service-code owner before use.</div>
+      </section>
+
+    </main>
+
+    <footer><span>Service Code Match Portal</span><span>Client workspace</span></footer>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

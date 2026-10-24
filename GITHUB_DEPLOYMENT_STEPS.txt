@@ -1,0 +1,32 @@
+SERVICE CODE MATCH PORTAL — SIMPLE GITHUB PAGES STEPS
+
+1. Download and extract service_code_match_portal_github_pages.zip.
+2. Sign in to GitHub and create a NEW repository named service-code-match-portal.
+3. Keep the repo free of Excel/CSV vendor files. Only upload the portal source files.
+4. Open the repo → Add file → Upload files.
+5. Upload the extracted folder's CONTENTS, not the enclosing folder: index.html, styles.css, app.js, matcher-worker.js, .nojekyll, .gitignore, README.md, GITHUB_DEPLOYMENT_STEPS.txt and tests/worker-smoke-test.js.
+6. Click Commit changes.
+7. Open Settings → Pages.
+8. Under Build and deployment, choose Deploy from a branch.
+9. Choose main and /(root), then click Save.
+10. Open the URL GitHub shows on the Pages settings page.
+
+FIRST USE IN THE PUBLISHED PORTAL
+A. Under Reference Master, upload the workbook containing Manual Services updated.
+B. Keep Manual Services updated selected and click Load and save reference master.
+C. Wait for Ready.
+
+EVERY NEW SOUTH WORKBOOK AFTER THAT
+A. Upload the new South .xlsx file.
+B. Select All Vendor Services (or the sheet you need).
+C. Click Run service matching.
+D. Wait for 100% and click Download Excel.
+E. Review Auto Match Status / Review Required and Auto Candidate Alternatives before approving codes.
+
+PRIVACY
+The portal processes files in the browser and does not send workbook contents to a matching server. The reference master is saved in IndexedDB in that browser profile. Do NOT commit vendor/reference Excel files to GitHub. GitHub Pages sites are public on the internet, so the repository should contain only the portal code.
+
+IMPORTANT
+- A modern Chrome or Edge browser and an internet connection are needed to load the Excel reader from the SheetJS CDN.
+- The matching score is browser-optimized and may differ from the earlier Python RapidFuzz score.
+- Candidate codes are suggestions, not approvals. Ambiguous and low-confidence results need manual review.

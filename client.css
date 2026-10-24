@@ -1,0 +1,253 @@
+:root {
+  --bg: #f5f8f6;
+  --paper: #ffffff;
+  --ink: #172522;
+  --muted: #62716c;
+  --line: #dfe8e3;
+  --blue: #245b68;
+  --blue-dark: #194852;
+  --teal: #168776;
+  --navy: #172b30;
+  --shadow: 0 12px 32px rgba(30, 58, 53, 0.055);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  background: #f5f8f6;
+}
+
+.app-shell {
+  max-width: 1180px;
+  padding-inline: 30px;
+}
+
+.topbar {
+  height: 78px;
+  border-color: #dce5e0;
+}
+
+.brand-mark {
+  border-radius: 8px;
+}
+
+.brand strong,
+.hero h1,
+.panel h2,
+.progress-heading h2,
+.results-head h2 {
+  letter-spacing: 0;
+}
+
+.brand small {
+  font-size: 12px;
+}
+
+.privacy-pill {
+  border-radius: 6px;
+  padding: 8px 11px;
+  font-size: 12px;
+}
+
+.hero {
+  max-width: 760px;
+  padding: 42px 0 28px;
+  animation: client-enter 420ms ease-out both;
+}
+
+.eyebrow,
+.step-label {
+  letter-spacing: 1px;
+}
+
+.hero h1 {
+  max-width: 700px;
+  margin: 14px 0 12px;
+  font-size: 42px;
+  line-height: 1.13;
+}
+
+.hero h1 span {
+  color: #287367;
+}
+
+.hero-copy {
+  max-width: 610px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.hero-points {
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.hero-points b {
+  min-width: 29px;
+  height: 27px;
+  border-radius: 4px;
+  background: #e5f0ed;
+  color: #28635a;
+  letter-spacing: 0;
+}
+
+.notice {
+  margin-bottom: 20px;
+  padding: 15px 18px;
+  border: 1px solid #d3e7df;
+  border-radius: 6px;
+  background: #edf7f3;
+  animation: client-enter 460ms 70ms ease-out both;
+}
+
+.notice strong {
+  color: #205e52;
+}
+
+.notice p {
+  max-width: 920px;
+  line-height: 1.6;
+}
+
+.workflow-grid {
+  gap: 18px;
+  animation: client-enter 480ms 130ms ease-out both;
+}
+
+.panel {
+  min-width: 0;
+  padding: 25px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+
+.panel h2 {
+  margin-top: 16px;
+  font-size: 22px;
+}
+
+.panel-copy {
+  min-height: 44px;
+  color: #62716c;
+  line-height: 1.65;
+}
+
+.panel-copy strong {
+  color: #33443f;
+}
+
+.status-chip {
+  border-radius: 5px;
+}
+
+.file-drop {
+  min-height: 148px;
+  border-radius: 5px;
+  border-color: #cbd9d3;
+  background: #fbfdfc;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.file-drop:hover {
+  transform: translateY(-1px);
+  border-color: #438b7d;
+  background: #f4faf7;
+}
+
+.upload-icon {
+  border-radius: 5px;
+  background: #e8f1ee;
+  color: #28685e;
+}
+
+.drop-title {
+  color: #263b35;
+}
+
+.drop-hint,
+.file-name {
+  overflow-wrap: anywhere;
+}
+
+.button {
+  min-height: 42px;
+  border-radius: 5px;
+  font-weight: 700;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.button-primary {
+  background: #245b68;
+  box-shadow: none;
+}
+
+.button-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #194852;
+}
+
+.button:focus-visible,
+.file-drop:focus-within,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(22, 135, 118, 0.32);
+  outline-offset: 2px;
+}
+
+.progress-panel,
+.results-panel {
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+
+.results-note {
+  border-radius: 5px;
+  line-height: 1.65;
+}
+
+footer {
+  border-color: #dce5e0;
+}
+
+@keyframes client-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 850px) {
+  .app-shell { padding-inline: 20px; }
+  .workflow-grid { gap: 14px; }
+  .panel { padding: 22px; }
+}
+
+@media (max-width: 540px) {
+  .app-shell { padding-inline: 14px; }
+  .topbar { height: 70px; }
+  .brand-mark { width: 37px; height: 37px; }
+  .brand strong { font-size: 13px; }
+  .brand small { font-size: 10px; }
+  .privacy-pill { max-width: 150px; padding: 7px 8px; font-size: 10px; }
+  .hero { padding: 34px 1px 22px; }
+  .hero h1 { font-size: 34px; line-height: 1.15; }
+  .hero-copy { font-size: 13px; }
+  .hero-points { gap: 10px 12px; }
+  .hero-points span { font-size: 11px; }
+  .notice { padding: 13px; }
+  .notice p { font-size: 11px; }
+  .panel { padding: 19px 16px; }
+  .panel-copy { min-height: 0; }
+  .file-drop { min-height: 138px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

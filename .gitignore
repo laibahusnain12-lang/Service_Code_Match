@@ -1,0 +1,6 @@
+# Never add vendor or reference workbooks to this public static-site repository
+*.xlsx
+*.xls
+*.xlsm
+*.xlsb
+*.csv
