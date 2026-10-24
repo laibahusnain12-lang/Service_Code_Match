@@ -487,7 +487,9 @@ function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, t
     const codes = [...new Set(compatible.map(mapping => mapping.code))];
     if (!compatible.length) continue;
     if (codes.length !== 1) {
+      const candidates = codes.flatMap(code => ctx.codeMap.get(code) || []);
       resultEmpty['Auto Match Status / Review Required'] = 'AMBIGUOUS APPROVED MAPPING — multiple approved codes';
+      resultEmpty['Auto Candidate Alternatives'] = candidates.map(candidateLabel).join(' | ').slice(0, 3000);
       resultEmpty['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
       return resultEmpty;
     }

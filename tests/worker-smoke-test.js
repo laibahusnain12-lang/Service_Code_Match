@@ -90,6 +90,7 @@ function getReviewRows(rows) {
   assert(rows[7]['Auto Candidate Service Code'] === '', 'A reviewer-approved mapping must not cross into another category');
   assert(rows[8]['Auto Candidate Service Code'] === '', 'Ambiguous exact matches must not auto-assign a code');
   assert(rows[8]['Auto Match Status / Review Required'].startsWith('AMBIGUOUS'), 'Ambiguous row should be flagged');
+  assert(rows[8]['Auto Candidate Alternatives'].includes('C004') && rows[8]['Auto Candidate Alternatives'].includes('C005'), 'Ambiguous exact matches should return every possible reference code for review');
   assert(rows[8]['Reviewer Decision'] === 'Pending', 'Ambiguous exact matches must remain pending');
   assert(rows[9]['Auto Match Status / Review Required'].startsWith('HIGH-CONFIDENCE FUZZY CANDIDATE'), 'High-confidence fuzzy row should be treated as ready');
   assert(rows[10]['Auto Match Status / Review Required'].startsWith('BLANK SERVICE NAME'), 'Blank names must be flagged');

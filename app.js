@@ -15,6 +15,7 @@
     'Auto Candidate Sub Group',
     'Auto Match Score',
     'Auto Match Status / Review Required',
+    'Auto Candidate Alternatives',
     'Auto Existing Code Check',
     'Reviewer Decision',
     'Approved Service Code',
@@ -27,6 +28,7 @@
     'Auto Candidate Sub Group': 'Suggested Sub Group',
     'Auto Match Score': 'Match Percentage',
     'Auto Match Status / Review Required': 'Review Status',
+    'Auto Candidate Alternatives': 'Other Possible Matches',
     'Auto Existing Code Check': 'Existing Code Comparison',
     'Reviewer Decision': 'Reviewer Decision',
     'Approved Service Code': 'Approved Service Code',
@@ -548,7 +550,6 @@
     const obsoleteHeaders = new Set([
       'Auto Candidate Standardized Service Name',
       'Auto Match Method',
-      'Auto Candidate Alternatives',
       'AI Recommendation'
     ].map(headerKey));
     const originalHeaders = (sourceMatrix[0] || []).slice();
