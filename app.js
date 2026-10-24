@@ -11,19 +11,68 @@
   const REVIEW_SHEET_NAME = 'Auto - Review Needed';
   const OUTPUT_COLUMNS = [
     'Auto Candidate Service Code',
-    'Auto Candidate Standardized Service Name',
     'Auto Candidate Service Display Name',
     'Auto Candidate Group',
     'Auto Candidate Sub Group',
     'Auto Match Score',
-    'Auto Match Method',
     'Auto Match Status / Review Required',
-    'Auto Candidate Alternatives',
     'Auto Existing Code Check',
     'Reviewer Decision',
     'Approved Service Code',
     'Review Notes'
   ];
+  const OUTPUT_HEADERS = {
+    'Auto Candidate Service Code': 'Suggested Service Code',
+    'Auto Candidate Service Display Name': 'Suggested Service Name',
+    'Auto Candidate Group': 'Suggested Group',
+    'Auto Candidate Sub Group': 'Suggested Sub Group',
+    'Auto Match Score': 'Match Percentage',
+    'Auto Match Status / Review Required': 'Review Status',
+    'Auto Existing Code Check': 'Existing Code Comparison',
+    'Reviewer Decision': 'Reviewer Decision',
+    'Approved Service Code': 'Approved Service Code',
+    'Review Notes': 'Review Notes'
+  };
+  const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).map(([key, header]) => [header, key]));
+
+  function clientReviewStatus(status) {
+    const upper = String(status || '').toUpperCase();
+    if (upper.includes('AUTO-APPROVED (100%')) return 'Approved — exact unique match';
+    if (upper.includes('EXISTING CODE DISAGREEMENT') || upper.includes('CHECK —')) return 'Existing code differs — review';
+    if (upper.includes('AMBIGUOUS')) return 'Multiple possible matches — review';
+    if (upper.includes('CATEGORY CONFLICT')) return 'Category conflict — review';
+    if (upper.includes('BLANK SERVICE NAME')) return 'Service name missing';
+    if (upper.includes('UNMATCHED')) return 'No matching service found';
+    if (upper.includes('LOW CONFIDENCE')) return 'Low match — review';
+    if (upper.includes('EXACT MATCH')) return 'Exact match — verify';
+    if (upper.includes('HIGH-CONFIDENCE FUZZY CANDIDATE')) return 'Strong suggestion — verify';
+    if (upper.includes('HISTORICAL MAPPING') || upper.includes('REVIEWER MAPPING') || upper.includes('MEDICAL TERM VARIANT') || upper.includes('LOCAL AI SUGGESTION') || upper.includes('FUZZY CANDIDATE')) return 'Suggested match — verify';
+    return 'Review required';
+  }
+  function compactWorksheetColumns(sheet, removedColumns) {
+    if (!removedColumns.size) return;
+    const removed = [...removedColumns].sort((a, b) => a - b);
+    const oldCells = Object.keys(sheet).filter(address => !address.startsWith('!'));
+    const shiftedCells = new Map();
+    for (const address of oldCells) {
+      const cell = XLSX.utils.decode_cell(address);
+      if (removedColumns.has(cell.c)) continue;
+      const shift = removed.filter(column => column < cell.c).length;
+      shiftedCells.set(XLSX.utils.encode_cell({ r: cell.r, c: cell.c - shift }), sheet[address]);
+    }
+    oldCells.forEach(address => delete sheet[address]);
+    shiftedCells.forEach((cell, address) => { sheet[address] = cell; });
+
+    if (sheet['!ref']) {
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      const removedBeforeEnd = removed.filter(column => column <= range.e.c).length;
+      range.e.c = Math.max(range.s.c, range.e.c - removedBeforeEnd);
+      sheet['!ref'] = XLSX.utils.encode_range(range);
+    }
+    if (Array.isArray(sheet['!cols'])) {
+      sheet['!cols'] = sheet['!cols'].filter((_, index) => !removedColumns.has(index));
+    }
+  }
 
   const $ = (id) => document.getElementById(id);
   let dbPromise;
@@ -498,7 +547,8 @@
   function buildReviewSheet(workbook, rows, sourceRows) {
     const columns = [
       'Source Row Number', 'Vendor Name', 'Service Name', 'Standardized Service Name',
-      'Vendor Group', 'Vendor Sub Group', 'Existing Service Code', ...OUTPUT_COLUMNS
+      'Vendor Group', 'Vendor Sub Group', 'Existing Service Code',
+      ...OUTPUT_COLUMNS.map(header => OUTPUT_HEADERS[header] || header)
     ];
     const data = [columns];
     rows.forEach((result, index) => {
@@ -513,21 +563,29 @@
         if (column === 'Vendor Sub Group') return source.sourceSubgroup || '';
         if (column === 'Existing Service Code') return source.existingCode || '';
         if (column === 'Reviewer Decision') return 'Pending';
-        return result[column] == null ? '' : result[column];
+        const resultKey = OUTPUT_KEYS_BY_HEADER[column] || column;
+        if (resultKey === 'Auto Match Status / Review Required') return clientReviewStatus(result[resultKey]);
+        return result[resultKey] == null ? '' : result[resultKey];
       }));
     });
     if (workbook.Sheets[REVIEW_SHEET_NAME]) {
       delete workbook.Sheets[REVIEW_SHEET_NAME];
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== REVIEW_SHEET_NAME);
     }
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(data), REVIEW_SHEET_NAME);
+    const reviewSheet = XLSX.utils.aoa_to_sheet(data);
+    const reviewScoreColumn = columns.indexOf('Match Percentage');
+    for (let row = 1; row < data.length; row++) {
+      const cell = reviewSheet[XLSX.utils.encode_cell({ r: row, c: reviewScoreColumn })];
+      if (cell) cell.z = '0.##"%"';
+    }
+    XLSX.utils.book_append_sheet(workbook, reviewSheet, REVIEW_SHEET_NAME);
   }
 
   function buildReviewGroupsSheet(workbook, rows, sourceRows) {
     const columns = [
       'Service Name', 'Standardized Service Name', 'Vendor Group', 'Vendor Sub Group',
       'Existing Service Code', 'Suggested Service Code', 'Suggested Service Name',
-      'Match Percentage', 'AI Recommendation', 'Match Status', 'Occurrences', 'First 100 Source Row Numbers',
+      'Match Percentage', 'Review Status', 'Occurrences', 'First 100 Source Row Numbers',
     ];
     const groups = new Map();
     rows.forEach((result, index) => {
@@ -547,8 +605,7 @@
           'Suggested Service Code': result['Auto Candidate Service Code'] || '',
           'Suggested Service Name': result['Auto Candidate Service Display Name'] || result['Auto Candidate Standardized Service Name'] || '',
           'Match Percentage': result['Auto Match Score'] || 0,
-          'AI Recommendation': result['AI Recommendation'] || 'Review carefully',
-          'Match Status': result['Auto Match Status / Review Required'] || '',
+          'Review Status': clientReviewStatus(result['Auto Match Status / Review Required']),
           'Occurrences': 0,
           'First 100 Source Row Numbers': []
         });
@@ -569,12 +626,31 @@
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== 'Auto - Review Groups');
     }
     if (data.length > 1) {
-      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(data), 'Auto - Review Groups');
+      const groupsSheet = XLSX.utils.aoa_to_sheet(data);
+      const groupsScoreColumn = columns.indexOf('Match Percentage');
+      for (let row = 1; row < data.length; row++) {
+        const cell = groupsSheet[XLSX.utils.encode_cell({ r: row, c: groupsScoreColumn })];
+        if (cell) cell.z = '0.##"%"';
+      }
+      XLSX.utils.book_append_sheet(workbook, groupsSheet, 'Auto - Review Groups');
     }
   }
 
   function buildOutputWorkbook(workbook, sheetName, outputRows, sourceMatrix, sourceRows) {
     const ws = workbook.Sheets[sheetName];
+    const obsoleteHeaders = new Set([
+      'Auto Candidate Standardized Service Name',
+      'Auto Match Method',
+      'Auto Candidate Alternatives',
+      'AI Recommendation'
+    ].map(headerKey));
+    const originalHeaders = (sourceMatrix[0] || []).slice();
+    const removedColumns = new Set();
+    originalHeaders.forEach((header, index) => {
+      if (obsoleteHeaders.has(headerKey(header))) removedColumns.add(index);
+    });
+    compactWorksheetColumns(ws, removedColumns);
+    sourceMatrix = sourceMatrix.map(row => (row || []).filter((_, index) => !removedColumns.has(index)));
     const headers = (sourceMatrix[0] || []).slice();
     const headerMap = new Map();
     headers.forEach((h, i) => { if (!isBlank(h)) headerMap.set(headerKey(h), i); });
@@ -583,13 +659,18 @@
     const outCols = {};
     const headerStyleTemplate = pickHeaderStyleTemplate(ws) || { s: { font: { bold: true } } };
     OUTPUT_COLUMNS.forEach(header => {
-      const key = headerKey(header);
+      const outputHeader = OUTPUT_HEADERS[header] || header;
+      const key = headerKey(outputHeader);
+      const legacyKey = headerKey(header);
       if (headerMap.has(key)) outCols[header] = headerMap.get(key);
-      else { outCols[header] = nextCol; headerMap.set(key, nextCol); nextCol++; }
+      else if (headerMap.has(legacyKey)) {
+        outCols[header] = headerMap.get(legacyKey);
+        headerMap.set(key, outCols[header]);
+      } else { outCols[header] = nextCol; headerMap.set(key, nextCol); nextCol++; }
     });
     OUTPUT_COLUMNS.forEach(header => {
       const cellAddress = XLSX.utils.encode_cell({ r: 0, c: outCols[header] });
-      const cell = { t: 's', v: header };
+      const cell = { t: 's', v: OUTPUT_HEADERS[header] || header };
       copyCellStyle(cell, headerStyleTemplate);
       ws[cellAddress] = cell;
     });
@@ -601,9 +682,10 @@
           : row[header];
         const cellAddress = XLSX.utils.encode_cell({ r: excelRow, c: outCols[header] });
         if (header === 'Auto Match Score') {
-          ws[cellAddress] = { t: 'n', v: Number(value) || 0 };
+          ws[cellAddress] = { t: 'n', v: Number(value) || 0, z: '0.##"%"' };
         } else {
-          ws[cellAddress] = { t: 's', v: String(value) };
+          const displayValue = header === 'Auto Match Status / Review Required' ? clientReviewStatus(value) : value;
+          ws[cellAddress] = { t: 's', v: String(displayValue) };
         }
       });
     });
@@ -688,7 +770,7 @@
           $('status-breakdown').innerHTML = '';
           Object.entries(stats.counts).sort((a,b) => b[1]-a[1] || a[0].localeCompare(b[0])).forEach(([status, count]) => {
             const tr = document.createElement('tr');
-            const tdStatus = document.createElement('td'); tdStatus.textContent = status;
+            const tdStatus = document.createElement('td'); tdStatus.textContent = clientReviewStatus(status);
             const tdCount = document.createElement('td'); tdCount.className = 'numeric'; tdCount.textContent = formatNumber(count);
             tr.append(tdStatus, tdCount); $('status-breakdown').appendChild(tr);
           });

@@ -8,10 +8,9 @@ A static, GitHub Pages-ready portal for matching South vendor services with the 
 - Lets you select the reference sheet (defaults to `Manual Services updated`).
 - Saves the parsed reference rows in the current browser's IndexedDB so the master is selected only once per browser/device.
 - Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
-- Checks exact normalized names first, then searches fuzzy candidates.
-- Adds separate `Auto Candidate ...` columns, match score, method, status, alternatives, and comparison to the existing South code.
-- Adds candidate code, match percentage, status, alternatives, existing-code comparison, and a row-level reviewer decision to the vendor sheet, plus a review worksheet and grouped-review aid. Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Other rows remain for manual review, including ambiguous results even when their score is 100%. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
-- Adds an `AI Recommendation` priority label: strong conflict-free matches are marked for confirmation, conflicts/ambiguities are marked for careful review, and local-LLM-ranked suggestions are marked for verification. These labels never change the human `Reviewer Decision`, which starts as `Pending`.
+- Compares vendor services with the reference catalogue and adds a suggested service code/name, match percentage, review status, and existing-code comparison.
+- Adds a row-level reviewer decision to the vendor sheet, plus a review worksheet and grouped-review aid. The exported columns use client-friendly names and do not expose internal matching method, candidate alternatives, or AI ranking technique.
+- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Other rows remain for manual review, including ambiguous results even when their score is 100%. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
 - Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
 - Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
 
@@ -62,15 +61,12 @@ Only the needed reference columns are retained in this browser's IndexedDB: serv
 4. The browser sends only service terms, category context, and the candidate catalogue descriptions to Ollama at `localhost:11434`. It does not send vendor names, rates, or whole workbook rows. The model reranks only supplied candidates; it cannot create service codes.
 5. If Ollama is unavailable, the regular matcher output is retained. The displayed match percentage remains the text-similarity score, not AI confidence. AI-ranked suggestions require manual verification; only safe exact 100% unique matches are auto-approved.
 
-## Match interpretation
+## Review Status
 
-- **EXACT MATCH** means the normalized source name matched a reference display/standardized name. A 100% exact match is auto-approved only when its code is unique and there is no category conflict or existing-code disagreement.
-- **HIGH-CONFIDENCE FUZZY CANDIDATE** means the text similarity meets the high threshold but is not an exact match.
-- **FUZZY CANDIDATE** / **LOW CONFIDENCE** requires manual review.
-- **AMBIGUOUS** means the matching reference name points to multiple service codes or top candidates tie across codes; the candidate code is left blank to avoid guessing.
+The client-facing status labels are concise: exact match, strong suggestion, suggested match, low match, multiple possible matches, category conflict, existing-code mismatch, missing service name, or no match. Internal matching methods are not included as result columns.
+
 - `Auto - Review Groups` groups repeated service names by standardized name, category, and existing code; it includes occurrence counts and source row numbers to reduce duplicate review.
-- Imported reviewer-approved mappings can be reused in later runs. Historical automated suggestions are always review-required and are not treated as approvals.
-- **BLANK SERVICE NAME** requires manual entry.
+- Imported reviewer-approved mappings can be reused in later runs as suggestions. Historical automated suggestions remain review-required and are not treated as approvals.
 
 The browser version uses a character/token shortlist before its similarity calculation to keep matching responsive on large files. Scores are intended for review prioritization, not clinical or contractual approval. Results may differ from Python RapidFuzz on fuzzy matches because the shortlist and search implementation are browser-optimized.
 
