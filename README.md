@@ -1,95 +1,115 @@
-# Service Code Match Portal
+# Catalogue Match Portal
 
-A static, GitHub Pages-ready portal for matching South vendor services with the `Manual Services updated` reference master. It replaces repeatedly running a local Python matching script with a browser-based workflow.
+A static, browser-based tool for matching records in a spreadsheet against a reference catalogue. It runs entirely on the client, so no backend, database, or API server is required.
 
-## What it does
+## Features
 
-- Reads Excel workbooks in the browser.
-- Lets you select the reference sheet (defaults to `Manual Services updated`).
-- Saves the parsed reference rows in the current browser's IndexedDB so the master is selected only once per browser/device.
-- Lets you upload each new South workbook and choose the sheet to process (defaults to `All Vendor Services`).
-- Compares vendor services with the reference catalogue and adds a `Suggested Code to Select`, suggested service name, match percentage, review status, and existing-code comparison.
-- Adds a row-level reviewer decision to the vendor sheet. The downloaded workbook preserves the source workbook's original tabs, adds client-friendly comparison columns to the selected vendor sheet, includes other possible codes for ambiguous matches, and does not add separate review or summary tabs or expose internal matching methods.
-- Only a 100% exact-normalized name match with one unique code and no category or existing-code conflict is auto-approved. Ambiguous rows include a suggested code to select, ranked using an existing code and matching vendor categories when available, plus the other possible matches; they remain pending until reviewed. It downloads a new `.xlsx` without an `Auto - Summary` worksheet; the original `Service Code` column is not overwritten.
-- Processes all workbook content locally in a Web Worker. It does not send workbook contents to a matching API/server.
-- Optionally uses an Ollama model running on the same computer to rerank a capped set of uncertain catalogue candidates. The model may only select supplied catalogue entries; its selections remain suggestions requiring row-by-row verification.
+- Reads Excel workbooks (`.xlsx`) directly in the browser
+- Stores the reference catalogue locally in the browser (IndexedDB), so it only needs to be imported once per browser
+- Matches input records against the catalogue and returns a suggested code, suggested name, and match score
+- Flags each row with a review status and a reviewer decision column
+- Exports a new workbook with the original sheets preserved and results added
+- Processes all data locally in a Web Worker; workbook contents are never sent to a server
+- Optional local AI re-ranking of uncertain matches via [Ollama](https://ollama.com)
 
-## Important privacy note
+## Privacy
 
-**Do not upload vendor workbooks or the reference master into the GitHub repository.** GitHub Pages websites are publicly accessible. This repository contains only the portal code. The selected reference master is stored in the browser that imported it, not in the repository or on a matching server.
+All processing happens in your browser. Workbooks and the reference catalogue are not uploaded anywhere.
 
-The saved master is available only in the same browser profile on the same device. If you use a different browser/device, import the master once on that browser too. Use **Clear** in the portal to remove the saved master from that browser.
+> **Do not commit workbooks or reference data to this repository.** GitHub Pages sites are publicly accessible. The repository should contain application code only.
 
-## Publish on GitHub Pages
+The saved catalogue is tied to the browser profile and device that imported it. Use **Clear** in the portal to remove it.
 
-1. Download and extract `service-code-match-portal.zip`.
-2. Create a new GitHub repository, for example `service-code-match-portal`.
-3. Upload the *contents* of the extracted folder to the repository root: `index.html`, `styles.css`, `app.js`, `matcher-worker.js`, `.nojekyll`, and this README. Do not upload any workbook.
-4. In the repository, open **Settings → Pages**.
-5. Under **Build and deployment**, select **Deploy from a branch**.
-6. Select branch **main** and folder **/(root)**, then click **Save**.
-7. Open the published URL displayed on the Pages settings screen. GitHub Pages may need several minutes to publish after the first setup.
+## Getting Started
 
-Official guide: <https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site>
+### Deploy with GitHub Pages
 
-## How to use the portal
+1. Create a new GitHub repository.
+2. Upload the project files to the repository root:
+   `index.html`, `styles.css`, `app.js`, `matcher-worker.js`, `.nojekyll`, `README.md`
+3. Go to **Settings → Pages**.
+4. Under **Build and deployment**, choose **Deploy from a branch**, select `main` and `/(root)`, then save.
+5. Open the published URL once deployment completes.
 
-### First use (one time per browser)
+See the [GitHub Pages documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/creating-a-github-pages-site) for details.
 
-1. Open the published portal in a modern Chrome or Edge browser.
-2. Under **Reference Master**, select the workbook containing `Manual Services updated`.
-3. Check that the reference sheet dropdown says `Manual Services updated`.
-4. Click **Load and save reference master** and wait for the green **Ready** indicator.
+### Run locally
 
-The reference catalogue and any imported prior suggestions or approvals are retained in this browser's IndexedDB. Catalogue records keep only the service code, display name, standardized name, group, subgroup, and status.
+```bash
+python3 -m http.server 8000
+```
 
-### Each time you have a new South file
+Then open `http://localhost:8000`.
 
-1. Under **South Workbook**, select the new South `.xlsx` file.
-2. Check that **All Vendor Services** is selected (or choose the correct sheet).
-3. Check the high-confidence and review thresholds if needed; defaults are 95 and 80.
-4. Click **Run service matching** and keep the page open until 100% is shown.
-5. Click **Download Excel**. The generated file is named `<input-name>_AUTO_MATCHED.xlsx`; the selected vendor worksheet is updated, original workbook tabs are preserved, and no additional review or summary tabs are added.
-6. Check the `Reviewer Decision` column on that sheet. Exact 100% matches with one candidate code and no category or existing-code conflict are marked `Auto-Approved (100% exact)`; other rows are `Pending`. Confirm each pending row against the reference, then enter `Approved` and the verified code.
-7. Select a matched workbook in **Use prior matches as suggestions** and click **Import suggestions**. Candidate suggestions and approved decisions with codes found in the saved catalogue are imported. Imported candidates remain review-required; prior approvals suggest codes for later rows but do not auto-approve them.
+## Usage
 
-### Optional local AI ranking
+### 1. Load the reference catalogue (once per browser)
 
-1. Install Ollama locally and download a model, for example `ollama pull qwen2.5:7b`.
-2. Configure Ollama to allow the exact portal origin in `OLLAMA_ORIGINS` (for local development, typically `http://localhost:8000`; for a published portal, use its exact HTTPS origin). Restart Ollama after changing the setting. Do not use a wildcard origin on an internet-connected machine.
-3. In the portal, expand **Optional local AI ranking**, enable it, enter the installed model name, and set a limit. Start with 100 unique service names.
-4. The browser sends only service terms, category context, and the candidate catalogue descriptions to Ollama at `localhost:11434`. It does not send vendor names, rates, or whole workbook rows. The model reranks only supplied candidates; it cannot create service codes.
-5. If Ollama is unavailable, the regular matcher output is retained. The displayed match percentage remains the text-similarity score, not AI confidence. AI-ranked suggestions require manual verification; only safe exact 100% unique matches are auto-approved.
+1. Select the workbook containing the reference catalogue.
+2. Choose the reference sheet.
+3. Click **Load and save reference master** and wait for the **Ready** indicator.
 
-## Review Status
+### 2. Run a match
 
-The client-facing status labels are concise: exact match, strong suggestion, suggested match, low match, multiple possible matches, category conflict, existing-code mismatch, missing service name, or no match. Internal matching methods are not included as result columns.
+1. Select the workbook to process and choose the sheet.
+2. Adjust the confidence and review thresholds if needed (defaults: 95 and 80).
+3. Click **Run matching** and wait until progress reaches 100%.
+4. Click **Download Excel** to export the results.
 
-- Imported candidate suggestions and reviewer-approved mappings can be reused in later runs as suggestions. Imported suggestions remain review-required and are not treated as approvals.
+### 3. Review results
 
-The browser version uses a character/token shortlist before its similarity calculation to keep matching responsive on large files. Scores are intended for review prioritization, not clinical or contractual approval. Results may differ from Python RapidFuzz on fuzzy matches because the shortlist and search implementation are browser-optimized.
+Each row includes a suggested code, match score, review status, and a reviewer decision column. Only exact, unambiguous matches are auto-approved. All other rows are marked `Pending` and should be verified against the reference before approval.
 
-## Requirements / limitations
+Previously reviewed workbooks can be imported as suggestions for future runs. Imported suggestions are never auto-approved.
 
-- A modern browser with Web Workers, IndexedDB, and enough available memory for the selected workbook.
-- Optional local AI ranking requires Ollama, a locally downloaded model, sufficient local compute, and Ollama CORS configuration for the exact portal origin. A local model may be slower than regular matching, so enable it for a limited number of repeated uncertain names first.
-- Internet access is needed to load the SheetJS Excel reader from its official CDN. The workbook contents remain in the browser; the library file is downloaded as a script.
-- GitHub Pages is static hosting; no Python, database, or API server is needed.
-- The downloaded workbook's data and sheets are retained, but SheetJS Community Edition may not preserve every advanced Excel style, macro, external connection, or embedded object. Use an original copy for critical formatted or macro-enabled workbooks.
-- Do not use this as final service-code approval. Validate ambiguous and low-confidence suggestions against the reference owner.
+## Review Statuses
 
-## Optional smoke test
+| Status | Meaning |
+|---|---|
+| Exact match | Normalized names match exactly with a single unique code |
+| Strong suggestion | High similarity score |
+| Suggested match | Moderate similarity score |
+| Low match | Weak similarity; manual review required |
+| Multiple possible matches | More than one plausible code |
+| Category conflict | Match conflicts with the record's category |
+| Existing-code mismatch | Suggested code differs from the code already present |
+| Missing name | No service name to match |
+| No match | No suitable candidate found |
 
-If Node.js is installed, the included worker smoke test can be run from the extracted portal folder with `node tests/worker-smoke-test.js`. It checks exact matching, fuzzy candidate assignment, existing-code comparison, ambiguous-code protection, and blank-name handling.
+## Optional: Local AI Ranking
 
-## Files
+1. Install Ollama and pull a model, for example `ollama pull qwen2.5:7b`.
+2. Add the portal's exact origin to `OLLAMA_ORIGINS` and restart Ollama. Avoid wildcard origins on internet-connected machines.
+3. In the portal, enable **Local AI ranking**, enter the model name, and set a processing limit.
 
-- `index.html` — user interface
-- `styles.css` — responsive styling
-- `app.js` — file selection, local master storage, workbook reading and export
-- `matcher-worker.js` — background matching algorithm
-- `.nojekyll` — serves the static application files directly
+Only service terms, category context, and candidate descriptions are sent to the local Ollama instance. The model can only choose from supplied candidates and cannot generate new codes. If Ollama is unavailable, standard matching results are used.
 
-## Library attribution
+## Limitations
 
-Excel workbook import/export uses SheetJS Community Edition via the official SheetJS CDN: <https://docs.sheetjs.com/docs/getting-started/installation/standalone/> (Apache-2.0; see the SheetJS project for license details).
+- Requires a modern browser with Web Workers and IndexedDB support.
+- Large workbooks depend on available browser memory.
+- The SheetJS library is loaded from its CDN, so an internet connection is required on first load.
+- Exported workbooks may not preserve macros, external connections, embedded objects, or some advanced formatting. Keep the original file for critical workbooks.
+- Match scores support review prioritization and are not a substitute for approval. Validate uncertain results with the catalogue owner.
+
+## Project Structure
+
+```
+index.html          User interface
+styles.css          Styling
+app.js              File handling, local storage, import/export
+matcher-worker.js   Background matching logic
+.nojekyll           Serves static files directly
+```
+
+## Testing
+
+With Node.js installed:
+
+```bash
+node tests/worker-smoke-test.js
+```
+
+## Acknowledgements
+
+Excel import and export use [SheetJS Community Edition](https://docs.sheetjs.com/) (Apache-2.0).
