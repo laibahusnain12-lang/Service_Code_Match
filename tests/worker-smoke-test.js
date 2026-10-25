@@ -68,7 +68,7 @@ function getReviewRows(rows) {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   assert(rows.length === 12, 'Expected twelve processed test rows');
   assert(rows[0]['Auto Candidate Service Code'] === 'C001', 'Exact code should be assigned');
-  assert(rows[0]['Auto Existing Code Check'] === 'Existing South code agrees with candidate', 'Existing-code comparison should be reported');
+  assert(rows[0]['Auto Existing Code Check'] === 'Existing code agrees with candidate', 'Existing-code comparison should be reported');
   assert(rows[0]['AI Recommendation'] === 'Auto-approved — exact unique match', 'Conflict-free 100% exact matches should be auto-approved');
   assert(rows[0]['Reviewer Decision'] === 'Auto-Approved (100% exact)', 'Exact auto-approval should be recorded distinctly from human approval');
   assert(rows[0]['Approved Service Code'] === 'C001', 'The exact unique candidate code should be recorded as approved');

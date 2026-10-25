@@ -346,7 +346,7 @@
 
   function sourceRowsFromSheet(workbook, sheetName) {
     const matrix = rowsForSheet(workbook, sheetName);
-    if (!matrix.length) throw new Error('The selected South worksheet is empty.');
+    if (!matrix.length) throw new Error('The selected worksheet is empty.');
     const headers = matrix[0] || [];
     const serviceCol = chooseColumn(headers, ['Service Name', 'Service Display Name', 'Vendor Service Name']);
     const standardCol = chooseColumn(headers, ['Standardized Service Name', 'Standarized Service Name', 'Standardised Service Name'], false);
@@ -515,7 +515,7 @@
     $('south-file-name').textContent = file.name;
     $('results-panel').hidden = true;
     setChip($('source-chip'), 'Reading file…', false);
-    setMessage($('source-message'), 'Reading South workbook locally…');
+    setMessage($('source-message'), 'Reading workbook locally…');
     try {
       sourceWorkbook = await readExcelFile(file);
       $('south-sheet').innerHTML = '';

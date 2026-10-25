@@ -106,10 +106,10 @@ function formatAlternatives(nameMap, rankedKeys, limit = 8) {
   return parts.join(' | ');
 }
 function compareExisting(existing, candidate) {
-  if (!existing) return 'No existing code in South file';
+  if (!existing) return 'No existing code in vendor file';
   if (!candidate) return 'No unambiguous candidate code';
-  if (String(existing).trim().toLocaleLowerCase() === String(candidate).trim().toLocaleLowerCase()) return 'Existing South code agrees with candidate';
-  return 'CHECK — existing South code differs from candidate';
+  if (String(existing).trim().toLocaleLowerCase() === String(candidate).trim().toLocaleLowerCase()) return 'Existing code agrees with candidate';
+  return 'CHECK — existing code differs from candidate';
 }
 function setAiRecommendation(row) {
   const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
