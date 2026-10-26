@@ -4,3 +4,11 @@
 *.xlsm
 *.xlsb
 *.csv
+
+# Local agent / environment files
+.agents/
+.env
+.env.*
+*.key
+*.pem
+secrets/

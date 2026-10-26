@@ -19,7 +19,21 @@
     'Auto Existing Code Check',
     'Reviewer Decision',
     'Approved Service Code',
-    'Review Notes'
+    'Review Notes',
+    'Original Service Name',
+    'Input Clinical Attributes',
+    'Candidate Clinical Attributes',
+    'Text Match Evidence',
+    'Clinical Equivalence Explanation',
+    'Matching Attributes',
+    'Missing Attributes',
+    'Critical Differences',
+    'Clinical Compatibility',
+    'Reference Verification Status',
+    'Decision',
+    'Decision Reason',
+    'Semantic Similarity',
+    'Clinical AI/Model Version'
   ];
   const OUTPUT_HEADERS = {
     'Auto Candidate Service Code': 'Suggested Code to Select',
@@ -32,7 +46,21 @@
     'Auto Existing Code Check': 'Existing Code Comparison',
     'Reviewer Decision': 'Reviewer Decision',
     'Approved Service Code': 'Approved Service Code',
-    'Review Notes': 'Review Notes'
+    'Review Notes': 'Review Notes',
+    'Original Service Name': 'Original Service Name',
+    'Input Clinical Attributes': 'Input Clinical Attributes',
+    'Candidate Clinical Attributes': 'Candidate Clinical Attributes',
+    'Text Match Evidence': 'Text Match Evidence',
+    'Clinical Equivalence Explanation': 'Clinical Equivalence Explanation',
+    'Matching Attributes': 'Matching Attributes',
+    'Missing Attributes': 'Missing Attributes',
+    'Critical Differences': 'Critical Differences',
+    'Clinical Compatibility': 'Clinical Compatibility',
+    'Reference Verification Status': 'Reference Verification Status',
+    'Decision': 'Decision',
+    'Decision Reason': 'Decision Reason',
+    'Semantic Similarity': 'Semantic Similarity',
+    'Clinical AI/Model Version': 'Clinical AI/Model Version'
   };
   const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).map(([key, header]) => [header, key]));
 
