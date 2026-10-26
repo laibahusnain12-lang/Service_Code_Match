@@ -36,7 +36,20 @@
     'Review Notes': 'Review Notes',
     'Original Service Name': 'Original Service Name'
   };
-  const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).map(([key, header]) => [header, key]));
+  const CLIENT_RESULT_COLUMNS = [
+  'Original Service Name',
+  'Auto Candidate Service Code',
+  'Auto Candidate Service Display Name',
+  'Auto Match Score',
+  'Auto Match Status / Review Required'
+];
+const SOURCE_RESULT_COLUMNS = [
+  'Auto Candidate Service Code',
+  'Auto Candidate Service Display Name',
+  'Auto Match Score',
+  'Auto Match Status / Review Required'
+];
+const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).map(([key, header]) => [header, key]));
 
   function clientReviewStatus(status) {
     const upper = String(status || '').toUpperCase();
@@ -648,7 +661,7 @@
     let nextCol = range.e.c + 1;
     const outCols = {};
     const headerStyleTemplate = pickHeaderStyleTemplate(ws) || { s: { font: { bold: true } } };
-    OUTPUT_COLUMNS.forEach(header => {
+    SOURCE_RESULT_COLUMNS.forEach(header => {
       const outputHeader = OUTPUT_HEADERS[header] || header;
       const key = headerKey(outputHeader);
       const legacyKey = headerKey(header);
@@ -658,7 +671,7 @@
         headerMap.set(key, outCols[header]);
       } else { outCols[header] = nextCol; headerMap.set(key, nextCol); nextCol++; }
     });
-    OUTPUT_COLUMNS.forEach(header => {
+    SOURCE_RESULT_COLUMNS.forEach(header => {
       const cellAddress = XLSX.utils.encode_cell({ r: 0, c: outCols[header] });
       const cell = { t: 's', v: sanitizeExcelText(OUTPUT_HEADERS[header] || header) };
       copyCellStyle(cell, headerStyleTemplate);
@@ -666,10 +679,8 @@
     });
     outputRows.forEach((row, index) => {
       const excelRow = index + 1;
-      OUTPUT_COLUMNS.forEach(header => {
-        const value = row[header] == null
-          ? (header === 'Reviewer Decision' ? 'Pending' : '')
-          : row[header];
+      SOURCE_RESULT_COLUMNS.forEach(header => {
+        const value = row[header] == null ? '' : row[header];
         const cellAddress = XLSX.utils.encode_cell({ r: excelRow, c: outCols[header] });
         if (header === 'Auto Match Score') {
           ws[cellAddress] = { t: 'n', v: Number(value) || 0, z: '0.##"%"' };
@@ -705,8 +716,7 @@
     }
 
     const clientSheetName = 'Client Report';
-    const technicalSheetName = 'Technical Details';
-    for (const obsoleteSheet of [clientSheetName, technicalSheetName]) {
+    for (const obsoleteSheet of [clientSheetName]) {
       if (workbook.Sheets[obsoleteSheet]) {
         delete workbook.Sheets[obsoleteSheet];
         workbook.SheetNames = workbook.SheetNames.filter(name => name !== obsoleteSheet);
@@ -825,69 +835,9 @@
       }
     }
 
-    const technicalHeaders = OUTPUT_COLUMNS.map(header => sanitizeExcelText(OUTPUT_HEADERS[header] || header));
-    const technicalAoa = [technicalHeaders.slice()];
-    outputRows.forEach(row => {
-      technicalAoa.push(OUTPUT_COLUMNS.map(header => {
-        if (header === 'Auto Match Score') return Number(row && row[header]) || 0;
-        const value = row ? row[header] : '';
-        return sanitizeExcelText(value == null ? '' : value);
-      }));
-    });
-    const technicalWorksheet = XLSX.utils.aoa_to_sheet(technicalAoa);
-    technicalWorksheet['!cols'] = technicalHeaders.map((header, index) => {
-      if (header === 'Match Percentage' || header === 'Auto Match Score') return { wch: 12 };
-      if (header === 'Other Possible Matches' || header === 'Text Match Evidence' || header === 'Clinical Equivalence Explanation') return { wch: 48 };
-      if (header === 'Original Service Name' || header === 'Suggested Service Name') return { wch: 40 };
-      return { wch: 24 };
-    });
-    const technicalLastRow = technicalAoa.length - 1;
-    const technicalLastCol = technicalHeaders.length - 1;
-    technicalWorksheet['!autofilter'] = {
-      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: technicalLastRow, c: technicalLastCol } })
-    };
-    technicalWorksheet['!freeze'] = {
-      xSplit: 0,
-      ySplit: 1,
-      topLeftCell: 'A2',
-      activePane: 'bottomLeft',
-      state: 'frozen'
-    };
-    for (let c = 0; c < technicalHeaders.length; c++) {
-      const address = XLSX.utils.encode_cell({ r: 0, c });
-      if (technicalWorksheet[address]) {
-        technicalWorksheet[address].s = {
-          font: { bold: true, color: { rgb: 'FFFFFF' } },
-          fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } },
-          alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
-        };
-      }
-    }
-    const statusColumnIndex = OUTPUT_COLUMNS.indexOf('Auto Match Status / Review Required');
-    outputRows.forEach((row, index) => {
-      const r = index + 1;
-      if (statusColumnIndex >= 0) {
-        const address = XLSX.utils.encode_cell({ r, c: statusColumnIndex });
-        if (technicalWorksheet[address]) {
-          technicalWorksheet[address].s = {
-            fill: { patternType: 'solid', fgColor: { rgb: reviewStatusFill(clientReviewStatus(technicalWorksheet[address].v)) } },
-            alignment: { wrapText: true, vertical: 'top' }
-          };
-        }
-      }
-      const scoreColumnIndex = OUTPUT_COLUMNS.indexOf('Auto Match Score');
-      if (scoreColumnIndex >= 0) {
-        const address = XLSX.utils.encode_cell({ r, c: scoreColumnIndex });
-        if (technicalWorksheet[address]) {
-          technicalWorksheet[address].z = '0.##"%"';
-        }
-      }
-    });
-
     workbook.Sheets[clientSheetName] = clientWorksheet;
-    workbook.Sheets[technicalSheetName] = technicalWorksheet;
-    const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName && name !== technicalSheetName);
-    workbook.SheetNames = [clientSheetName, technicalSheetName].concat(remainingSheetNames);
+    const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName);
+    workbook.SheetNames = [clientSheetName].concat(remainingSheetNames);
 
     if (workbook.Workbook && workbook.Workbook.WBProps) {
       delete workbook.Workbook.WBProps.CodeName;
