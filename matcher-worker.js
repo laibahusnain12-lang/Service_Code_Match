@@ -1,6 +1,12 @@
 /* Matching engine runs in a Web Worker so the page stays responsive. */
 'use strict';
 
+try {
+  if (typeof importScripts === 'function') importScripts('clinical-interpreter.js');
+} catch (error) {
+  // Fall back to the clinical helpers bundled below only when the separate module cannot be loaded.
+}
+
 const OUTPUT_COLUMNS = [
   'Auto Candidate Service Code',
   'Auto Candidate Standardized Service Name',
@@ -171,7 +177,9 @@ function emptyResult() {
     'Critical Differences': '',
     'Clinical Compatibility': 'Not evaluated',
     'Reference Verification Status': 'Unverified',
-    'Decision': 'No safe match',
+    'Code System': 'Unknown (not specified in reference catalogue)',
+    'Code System Version': 'Unknown',
+    'Decision': 'NO_SAFE_MATCH',
     'Decision Reason': 'No catalogue candidate found',
     'Semantic Similarity': 'Not evaluated (no embedding model configured)',
     'Clinical AI/Model Version': 'clinical-rules-v1'
@@ -202,7 +210,9 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       standard: String(original.standard || '').trim(),
       group: String(original.group || '').trim(),
       subgroup: String(original.subgroup || '').trim(),
-      status: String(original.status || '').trim()
+      status: String(original.status || '').trim(),
+      codeSystem: String(original.codeSystem || original.code_system || original['Code System'] || '').trim(),
+      codeSystemVersion: String(original.codeSystemVersion || original.code_system_version || original['Code System Version'] || '').trim()
     };
     if (!candidate.code) continue;
     if (norm(candidate.status).split(' ').some(word => inactiveWords.has(word))) { excludedInactive++; continue; }
@@ -277,7 +287,15 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       tokenIndex.get(token).push(key);
     }
   }
-  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, stats: {
+  const keyClinical = new Map();
+  if (typeof extractClinicalAttributes === 'function') {
+    for (const key of keys) {
+      const rec = (nameMap.get(key) || [])[0];
+      const text = rec ? (rec.display || rec.standard || key) : key;
+      keyClinical.set(key, extractClinicalAttributes(text));
+    }
+  }
+  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, keyClinical, stats: {
     referenceCount: indexedCount,
     uniqueNames: nameMap.size,
     uniqueCodes: uniqueCodes.size,
@@ -579,6 +597,8 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     return result;
   }
 
+  const inputTextForClinical = standardized || raw;
+  const inputAttrs = (typeof extractClinicalAttributes === 'function') ? extractClinicalAttributes(inputTextForClinical) : null;
   const ranked = new Map();
   const sourceForKey = new Map();
   let bestQueryValue = '';
@@ -590,6 +610,15 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
         bestQueryValue = query.value;
       }
     }
+  }
+  if (inputAttrs && ctx.keyClinical) {
+    const clinicalKeys = ctx.keys.filter(key => {
+      const c = ctx.keyClinical.get(key);
+      if (!c) return false;
+      return (inputAttrs.modality && c.modality === inputAttrs.modality)
+        || (inputAttrs.bodySite && c.bodySite === inputAttrs.bodySite);
+    }).slice(0, 12);
+    for (const key of clinicalKeys) if (!ranked.has(key)) ranked.set(key, 60);
   }
   const sorted = [...ranked.entries()].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   if (!sorted.length) return resultEmpty;
@@ -760,7 +789,7 @@ async function rerankWithLocalOllama(message, results, context, fuzzyFind, resul
           row['Auto Match Status / Review Required'] += '; EXISTING CODE DISAGREEMENT — manual review required';
         }
         setAiRecommendation(row);
-        enrichResultWithClinical(row, rowInput.rawName || item.input.rawName, rowInput.standardizedName || item.input.standardizedName);
+        enrichResultWithClinical(row, rowInput.rawName || item.input.rawName, rowInput.standardizedName || item.input.standardizedName, context);
         applied++;
       }
     });
@@ -869,7 +898,7 @@ self.onmessage = (event) => {
   catch (error) { self.postMessage({ type: 'error', error: error && error.message ? error.message : String(error) }); }
 };
 
-function enrichResultWithClinical(result, rawName, standardizedName) {
+function enrichResultWithClinical(result, rawName, standardizedName, ctx) {
   if (!result || typeof result !== 'object') return result;
   const raw = String(rawName || '').trim();
   const standardized = String(standardizedName || '').trim();
@@ -878,10 +907,12 @@ function enrichResultWithClinical(result, rawName, standardizedName) {
   result['Original Service Name'] = raw;
   const inputAttrs = extractClinicalAttributes(inputText);
   result['Input Clinical Attributes'] = JSON.stringify(inputAttrs);
+  let assessment = null;
+  let candidateAttrs = null;
   if (candidateText) {
-    const candidateAttrs = extractClinicalAttributes(candidateText);
+    candidateAttrs = extractClinicalAttributes(candidateText);
     result['Candidate Clinical Attributes'] = JSON.stringify(candidateAttrs);
-    const assessment = assessClinicalEquivalence(inputAttrs, candidateAttrs);
+    assessment = assessClinicalEquivalence(inputAttrs, candidateAttrs);
     result['Clinical Equivalence Explanation'] = assessment.explanation;
     result['Matching Attributes'] = assessment.matching.join('; ');
     result['Missing Attributes'] = assessment.missing.join('; ');
@@ -889,7 +920,6 @@ function enrichResultWithClinical(result, rawName, standardizedName) {
     result['Clinical Compatibility'] = assessment.criticalConflicts.length
       ? 'Conflict'
       : (assessment.missing.length ? 'Partial / missing attributes' : (assessment.compatible ? 'Compatible' : 'Conflict'));
-    result['Reference Verification Status'] = 'Catalogue entry present; source/version metadata not supplied';
   } else {
     result['Candidate Clinical Attributes'] = '';
     result['Clinical Equivalence Explanation'] = 'No catalogue candidate was available for clinical comparison.';
@@ -897,183 +927,51 @@ function enrichResultWithClinical(result, rawName, standardizedName) {
     result['Missing Attributes'] = inputAttrs.unknown.join('; ');
     result['Critical Differences'] = '';
     result['Clinical Compatibility'] = 'Not evaluated';
-    result['Reference Verification Status'] = 'No candidate';
   }
-  result['Text Match Evidence'] = (result['Auto Match Method'] || 'None') + '; score ' + result['Auto Match Score'];
+
   const status = String(result['Auto Match Status / Review Required'] || '').toUpperCase();
-  let decision = 'Manual review';
-  if (!candidateText) decision = 'No safe match';
-  else if (status.startsWith('EXACT MATCH') && !result['Critical Differences'] && !result['Missing Attributes']) decision = 'Exact match';
-  else if (result['Critical Differences'] || result['Missing Attributes']) decision = 'Manual review';
-  else if (status.includes('AMBIGUOUS')) decision = 'Manual review';
-  else if (status.includes('HIGH-CONFIDENCE') && result['Clinical Compatibility'] === 'Compatible') decision = 'Probable equivalent';
-  else decision = 'Manual review';
+  const candidateCode = String(result['Auto Candidate Service Code'] || '').trim();
+  let codeSystem = 'Unknown (not specified in reference catalogue)';
+  let codeSystemVersion = 'Unknown';
+  let verification = candidateText ? 'Catalogue entry present; code system/version not supplied by reference catalogue' : 'No candidate';
+  if (ctx && candidateCode && ctx.codeMap) {
+    const records = ctx.codeMap.get(candidateCode) || [];
+    const rec = records[0];
+    if (rec) {
+      if (rec.codeSystem) codeSystem = rec.codeSystem;
+      if (rec.codeSystemVersion) codeSystemVersion = rec.codeSystemVersion;
+      verification = codeSystem === 'Unknown (not specified in reference catalogue)'
+        ? 'Catalogue entry present; code system/version not supplied by reference catalogue'
+        : ('Catalogue entry present; code system "' + codeSystem + '" recorded (not independently verified)');
+    }
+  }
+  result['Code System'] = codeSystem;
+  result['Code System Version'] = codeSystemVersion;
+  result['Reference Verification Status'] = verification;
+
+  result['Text Match Evidence'] = (result['Auto Match Method'] || 'None') + '; score ' + result['Auto Match Score'];
+  let decision = 'REVIEW_REQUIRED';
+  if (!candidateText) decision = 'NO_SAFE_MATCH';
+  else if (status.startsWith('EXACT MATCH') && !result['Critical Differences'] && !result['Missing Attributes']) decision = 'VERIFIED_CANDIDATE';
+  else if (result['Critical Differences'] || result['Missing Attributes']) decision = 'REVIEW_REQUIRED';
+  else if (status.includes('AMBIGUOUS')) decision = 'REVIEW_REQUIRED';
+  else if (status.includes('EXISTING CODE DISAGREEMENT') || status.includes('CATEGORY CONFLICT') || status.includes('LOW CONFIDENCE')) decision = 'REVIEW_REQUIRED';
+  else decision = 'REVIEW_REQUIRED';
   result['Decision'] = decision;
+
   if (result['Critical Differences']) result['Decision Reason'] = 'Critical clinical conflict: ' + result['Critical Differences'];
   else if (result['Missing Attributes']) result['Decision Reason'] = 'Required clinical attributes missing: ' + result['Missing Attributes'];
   else if (status.includes('AMBIGUOUS')) result['Decision Reason'] = 'Multiple clinically plausible catalogue codes';
-  else if (decision === 'Exact match') result['Decision Reason'] = 'Normalized names match exactly with one unique catalogue code and no clinical conflicts';
-  else if (decision === 'Probable equivalent') result['Decision Reason'] = 'High text similarity with compatible clinical attributes';
+  else if (status.includes('EXISTING CODE DISAGREEMENT')) result['Decision Reason'] = 'Suggested code differs from the existing vendor code';
+  else if (decision === 'VERIFIED_CANDIDATE') result['Decision Reason'] = 'Normalized names match exactly with one unique catalogue code and no clinical conflicts';
   else if (!candidateText) result['Decision Reason'] = 'No catalogue candidate found';
   else result['Decision Reason'] = 'Requires human review';
   result['Semantic Similarity'] = 'Not evaluated (no embedding model configured)';
-  result['Clinical AI/Model Version'] = 'clinical-rules-v1';
+  result['Clinical AI/Model Version'] = 'clinical-rules-v2';
   return result;
 }
 
 function matchService(rawName, standardizedName, existingCode, ctx, fuzzyFind, thresholds, sourceContext = {}) {
   const result = matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFind, thresholds, sourceContext);
-  return enrichResultWithClinical(result, rawName, standardizedName);
-}
-
-function criticalAttributesFor(input, candidate) {
-  const critical = new Set(['bodySite']);
-  const mods = [input.modality, candidate.modality].map(v => String(v || '').toLowerCase());
-  if (mods.some(m => m.includes('computed tomography') || m.includes('magnetic resonance'))) critical.add('contrast');
-  if (mods.some(m => m.includes('laboratory')) || input.specimen || candidate.specimen || input.method || candidate.method) {
-    critical.add('specimen');
-    critical.add('method');
-  }
-  if (input.laterality || candidate.laterality) critical.add('laterality');
-  if (input.population || candidate.population) critical.add('population');
-  return [...critical];
-}
-
-function assessClinicalEquivalence(input, candidate) {
-  const matching = [];
-  const missing = [];
-  const conflicts = [];
-  const criticalConflicts = [];
-  const critical = criticalAttributesFor(input, candidate);
-  const simpleAttrs = ['modality','bodySite','contrast','specimen','method','laterality','population','purpose'];
-  for (const attr of simpleAttrs) {
-    const a = input[attr];
-    const b = candidate[attr];
-    if (a && b) {
-      if (norm(String(a)) === norm(String(b))) matching.push(attr);
-      else {
-        conflicts.push(attr + ': ' + a + ' vs ' + b);
-        if (critical.includes(attr)) criticalConflicts.push(attr + ' differs (' + a + ' vs ' + b + ')');
-      }
-    } else if (a || b) {
-      missing.push(attr + ' missing in ' + (a ? 'candidate' : 'input'));
-    }
-  }
-  const compatible = conflicts.length === 0;
-  const candidatePresent = !!candidate.rawText;
-  let explanation = 'Input service is ' + describeClinicalAttributes(input) + '; candidate service is ' + describeClinicalAttributes(candidate) + '.';
-  if (matching.length) explanation += ' Matching attributes: ' + matching.join(', ') + '.';
-  if (conflicts.length) explanation += ' Differences: ' + conflicts.join('; ') + '.';
-  else if (candidatePresent) explanation += ' No clinical conflicts detected.';
-  if (missing.length) explanation += ' Missing attributes: ' + missing.join('; ') + '.';
-  if (!candidatePresent) explanation = 'No catalogue candidate was available for clinical comparison.';
-  return { matching, missing, conflicts, criticalConflicts, compatible, explanation, critical };
-}
-
-function describeClinicalAttributes(attrs) {
-  const parts = [];
-  if (attrs.modality) parts.push(attrs.modality);
-  if (attrs.bodySite) parts.push(attrs.bodySite);
-  if (attrs.contrast && attrs.contrast !== 'unknown') parts.push(attrs.contrast);
-  if (attrs.specimen) parts.push(attrs.specimen + ' specimen');
-  if (attrs.method) parts.push(attrs.method);
-  if (attrs.laterality) parts.push(attrs.laterality);
-  if (attrs.population) parts.push(attrs.population);
-  if (!parts.length) return attrs.rawText ? '"' + attrs.rawText + '"' : 'an unspecified service';
-  return parts.join(', ');
-}
-
-const BODY_SITES = ['head','brain','neck','chest','thorax','abdomen','pelvis','spine','cervical','thoracic','lumbar','sacral','shoulder','arm','elbow','wrist','hand','hip','knee','ankle','foot','leg','thigh','heart','lung','liver','kidney','bladder','prostate','breast','thyroid','sinus','eye','ear'];
-const MODALITY_TERMS = [
-  ['computed tomography', ['ct','computed tomography','computerized tomography','computerised tomography']],
-  ['magnetic resonance imaging', ['mri','magnetic resonance','mr imaging']],
-  ['ultrasound', ['ultrasound','ultrasonography','usg','sonography','doppler']],
-  ['radiograph', ['x ray','x-ray','xray','radiograph','radiography']],
-  ['laboratory', ['lab','laboratory','blood test','urine test','serology','biochemistry','pathology']],
-  ['electrocardiogram', ['ecg','ekg','electrocardiogram','electrocardiograph']],
-  ['endoscopy', ['endoscopy','colonoscopy','gastroscopy','bronchoscopy','cystoscopy']],
-  ['biopsy', ['biopsy','fnac','fine needle aspiration']]
-];
-const SPECIMEN_TERMS = ['blood','serum','plasma','urine','stool','sputum','swab','tissue','csf','saliva','bone marrow'];
-const METHOD_TERMS = ['culture','pcr','elisa','microscopy','histopathology','cytology','immunoassay','chromatography','spectrometry','electrophoresis'];
-const POPULATION_TERMS = ['pediatric','paediatric','child','adult','pregnant','pregnancy','neonatal','geriatric'];
-const PURPOSE_TERMS = [
-  ['diagnostic', ['diagnostic','diagnosis','screening','detect','evaluation']],
-  ['therapeutic', ['therapeutic','treatment','therapy','intervention']],
-  ['monitoring', ['monitoring','follow up','follow-up','surveillance']]
-];
-
-function extractClinicalAttributes(text) {
-  const normalized = norm(text);
-  const attributes = {
-    rawText: String(text || '').trim(),
-    serviceType: '',
-    purpose: '',
-    bodySite: '',
-    organSystem: '',
-    modality: '',
-    contrast: 'unknown',
-    specimen: '',
-    method: '',
-    laterality: '',
-    components: [],
-    population: '',
-    qualifiers: [],
-    exclusions: [],
-    explicit: {},
-    inferred: {},
-    unknown: []
-  };
-  if (!normalized) {
-    attributes.unknown = ['service description'];
-    return attributes;
-  }
-  for (const [label, needles] of MODALITY_TERMS) {
-    if (needles.some(needle => new RegExp('\\b' + needle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\b').test(normalized))) {
-      attributes.modality = label;
-      attributes.explicit.modality = label;
-      break;
-    }
-  }
-  if (/\bwith contrast\b/.test(normalized)) attributes.contrast = 'with contrast';
-  else if (/\bwithout contrast\b|\bnon[- ]?contrast\b|\bplain\b/.test(normalized)) attributes.contrast = 'without contrast';
-  else if (/\bcontrast\b/.test(normalized)) attributes.contrast = 'contrast mentioned';
-  for (const site of BODY_SITES) {
-    if (new RegExp('\\b' + site + '\\b').test(normalized)) { attributes.bodySite = site; attributes.explicit.bodySite = site; break; }
-  }
-  for (const specimen of SPECIMEN_TERMS) {
-    if (new RegExp('\\b' + specimen + '\\b').test(normalized)) { attributes.specimen = specimen; attributes.explicit.specimen = specimen; break; }
-  }
-  for (const method of METHOD_TERMS) {
-    if (new RegExp('\\b' + method + '\\b').test(normalized)) { attributes.method = method; attributes.explicit.method = method; break; }
-  }
-  if (/\bleft\b/.test(normalized)) attributes.laterality = 'left';
-  else if (/\bright\b/.test(normalized)) attributes.laterality = 'right';
-  else if (/\bbilateral\b/.test(normalized)) attributes.laterality = 'bilateral';
-  for (const [label, needles] of PURPOSE_TERMS) {
-    if (needles.some(needle => new RegExp('\\b' + needle.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\b').test(normalized))) { attributes.purpose = label; break; }
-  }
-  for (const population of POPULATION_TERMS) {
-    if (new RegExp('\\b' + population + '\\b').test(normalized)) { attributes.population = population; break; }
-  }
-  if (/\bwith\b/.test(normalized)) {
-    const withMatch = normalized.match(/\bwith\b(.*)$/);
-    if (withMatch) {
-      const componentText = withMatch[1].trim();
-      if (componentText) attributes.components = componentText.split(/\band\b|,/).map(part => part.trim()).filter(Boolean);
-    }
-  }
-  if (attributes.modality === 'laboratory' || attributes.specimen || attributes.method) attributes.serviceType = 'laboratory test';
-  else if (attributes.modality && attributes.modality !== 'laboratory') attributes.serviceType = 'imaging study';
-  else if (/consultation|visit|review/.test(normalized)) attributes.serviceType = 'consultation';
-  else attributes.serviceType = 'service';
-  if (!attributes.purpose) attributes.purpose = 'diagnostic';
-  const unknown = [];
-  if (!attributes.modality) unknown.push('modality');
-  if (!attributes.bodySite) unknown.push('body site');
-  if (attributes.contrast === 'unknown' && (attributes.modality === 'computed tomography' || attributes.modality === 'magnetic resonance imaging')) unknown.push('contrast status');
-  if ((attributes.modality === 'laboratory' || attributes.serviceType === 'laboratory test') && !attributes.specimen) unknown.push('specimen');
-  if ((attributes.modality === 'laboratory' || attributes.serviceType === 'laboratory test') && !attributes.method) unknown.push('test method');
-  attributes.unknown = unknown;
-  return attributes;
+  return enrichResultWithClinical(result, rawName, standardizedName, ctx);
 }

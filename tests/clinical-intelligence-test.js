@@ -2,7 +2,11 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 const workerPath = path.join(__dirname, '..', 'matcher-worker.js');
+const clinicalPath = path.join(__dirname, '..', 'clinical-interpreter.js');
+const clinicalCode = fs.readFileSync(clinicalPath, 'utf8');
 const workerCode = fs.readFileSync(workerPath, 'utf8');
+const combinedCode = clinicalCode + '\n' + workerCode;
+
 
 function runWorker(payload) {
   return new Promise((resolve, reject) => {
@@ -13,7 +17,7 @@ function runWorker(payload) {
       if (message.type === 'error') reject(new Error(message.error));
     };
     vm.createContext(context);
-    vm.runInContext(workerCode, context, { filename: 'matcher-worker.js' });
+    vm.runInContext(combinedCode, context, { filename: 'matcher-worker.js' });
     context.onmessage({ data: payload });
   });
 }
@@ -30,7 +34,7 @@ function runWorker(payload) {
   });
   const r0 = exact.results[0];
   console.log('Exact decision:', r0['Decision'], '| Critical:', r0['Critical Differences']);
-  if (r0['Decision'] !== 'Exact match') throw new Error('Expected exact match decision');
+  if (r0['Decision'] !== 'VERIFIED_CANDIDATE') throw new Error('Expected exact match decision');
   if (r0['Critical Differences'] !== '') throw new Error('Expected no critical differences for exact match');
 
   // Contrast conflict must block auto-approval.
@@ -44,7 +48,7 @@ function runWorker(payload) {
   });
   const r1 = conflict.results[0];
   console.log('Conflict decision:', r1['Decision'], '| Critical:', r1['Critical Differences']);
-  if (r1['Decision'] !== 'Manual review') throw new Error('Expected manual review for contrast conflict');
+  if (r1['Decision'] !== 'REVIEW_REQUIRED') throw new Error('Expected manual review for contrast conflict');
   if (!String(r1['Critical Differences']).toLowerCase().includes('contrast')) throw new Error('Expected contrast critical difference');
 
   // Lab specimen/method conflict.
@@ -58,7 +62,7 @@ function runWorker(payload) {
   });
   const r2 = lab.results[0];
   console.log('Lab decision:', r2['Decision'], '| Critical:', r2['Critical Differences'], '| Missing:', r2['Missing Attributes']);
-  if (r2['Decision'] !== 'Manual review') throw new Error('Expected manual review for lab specimen conflict');
+  if (r2['Decision'] !== 'REVIEW_REQUIRED') throw new Error('Expected manual review for lab specimen conflict');
   if (!String(r2['Critical Differences']).toLowerCase().includes('specimen')) throw new Error('Expected specimen critical difference');
 
   // Missing attributes should require review when one side lacks a clinical attribute.

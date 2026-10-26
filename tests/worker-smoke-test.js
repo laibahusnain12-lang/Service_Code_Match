@@ -2,7 +2,11 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 const workerPath = path.join(__dirname, '..', 'matcher-worker.js');
+const clinicalPath = path.join(__dirname, '..', 'clinical-interpreter.js');
+const clinicalCode = fs.readFileSync(clinicalPath, 'utf8');
 const workerCode = fs.readFileSync(workerPath, 'utf8');
+const combinedCode = clinicalCode + '\n' + workerCode;
+
 
 function runWorker(payload, fetchImpl, messages = []) {
   return new Promise((resolve, reject) => {
@@ -14,7 +18,7 @@ function runWorker(payload, fetchImpl, messages = []) {
       if (message.type === 'error') reject(new Error(message.error));
     };
     vm.createContext(context);
-    vm.runInContext(workerCode, context, { filename: 'matcher-worker.js' });
+    vm.runInContext(combinedCode, context, { filename: 'matcher-worker.js' });
     context.onmessage({ data: payload });
   });
 }
@@ -24,7 +28,7 @@ function getReviewRows(rows) {
   context.self = context;
   context.postMessage = () => {};
   vm.createContext(context);
-  vm.runInContext(workerCode, context, { filename: 'matcher-worker.js' });
+  vm.runInContext(combinedCode, context, { filename: 'matcher-worker.js' });
   return vm.runInContext(`collectReviewRows(${JSON.stringify(rows)})`, context);
 }
 

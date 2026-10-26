@@ -30,6 +30,8 @@
     'Critical Differences',
     'Clinical Compatibility',
     'Reference Verification Status',
+    'Code System',
+    'Code System Version',
     'Decision',
     'Decision Reason',
     'Semantic Similarity',
@@ -57,6 +59,8 @@
     'Critical Differences': 'Critical Differences',
     'Clinical Compatibility': 'Clinical Compatibility',
     'Reference Verification Status': 'Reference Verification Status',
+    'Code System': 'Code System',
+    'Code System Version': 'Code System Version',
     'Decision': 'Decision',
     'Decision Reason': 'Decision Reason',
     'Semantic Similarity': 'Semantic Similarity',
@@ -231,6 +235,8 @@
     const groupCol = chooseColumn(headers, ['Group', 'Standard Group'], false);
     const subgroupCol = chooseColumn(headers, ['Sub Group', 'Subgroup', 'Standard Sub Group'], false);
     const statusCol = chooseColumn(headers, ['status', 'Status'], false);
+    const codeSystemCol = chooseColumn(headers, ['Code System', 'Coding System', 'Code System Name'], false);
+    const codeSystemVersionCol = chooseColumn(headers, ['Code System Version', 'Version', 'Release'], false);
     const records = [];
     for (let rowIndex = 1; rowIndex < matrix.length; rowIndex++) {
       const row = matrix[rowIndex] || [];
@@ -248,7 +254,9 @@
         standard,
         group: getCell(row, groupCol),
         subgroup: getCell(row, subgroupCol),
-        status
+        status,
+         codeSystem: getCell(row, codeSystemCol),
+         codeSystemVersion: getCell(row, codeSystemVersionCol)
       });
     }
     if (!records.length) throw new Error('No usable service names and codes found in the selected reference sheet.');
