@@ -950,24 +950,13 @@ function enrichResultWithClinical(result, rawName, standardizedName, ctx) {
   result['Reference Verification Status'] = verification;
 
   result['Text Match Evidence'] = (result['Auto Match Method'] || 'None') + '; score ' + result['Auto Match Score'];
-  let decision = 'REVIEW_REQUIRED';
-  if (!candidateText) decision = 'NO_SAFE_MATCH';
-  else if (status.startsWith('EXACT MATCH') && !result['Critical Differences'] && !result['Missing Attributes']) decision = 'VERIFIED_CANDIDATE';
-  else if (result['Critical Differences'] || result['Missing Attributes']) decision = 'REVIEW_REQUIRED';
-  else if (status.includes('AMBIGUOUS')) decision = 'REVIEW_REQUIRED';
-  else if (status.includes('EXISTING CODE DISAGREEMENT') || status.includes('CATEGORY CONFLICT') || status.includes('LOW CONFIDENCE')) decision = 'REVIEW_REQUIRED';
-  else decision = 'REVIEW_REQUIRED';
-  result['Decision'] = decision;
-
-  if (result['Critical Differences']) result['Decision Reason'] = 'Critical clinical conflict: ' + result['Critical Differences'];
-  else if (result['Missing Attributes']) result['Decision Reason'] = 'Required clinical attributes missing: ' + result['Missing Attributes'];
-  else if (status.includes('AMBIGUOUS')) result['Decision Reason'] = 'Multiple clinically plausible catalogue codes';
-  else if (status.includes('EXISTING CODE DISAGREEMENT')) result['Decision Reason'] = 'Suggested code differs from the existing vendor code';
-  else if (decision === 'VERIFIED_CANDIDATE') result['Decision Reason'] = 'Normalized names match exactly with one unique catalogue code and no clinical conflicts';
-  else if (!candidateText) result['Decision Reason'] = 'No catalogue candidate found';
-  else result['Decision Reason'] = 'Requires human review';
+  const final = (typeof finalDecision === 'function') ? finalDecision(result, assessment, { ctx: ctx }) : { decision: 'REVIEW_REQUIRED', reason: 'Requires human review' };
+  result['Decision'] = final.decision;
+  if (final.decision === 'NO_SAFE_MATCH') result['Decision Reason'] = final.reason;
+  else if (final.reason && final.reason !== 'Requires human review') result['Decision Reason'] = final.reason;
+  else if (!String(result['Decision Reason'] || '').trim()) result['Decision Reason'] = final.reason;
   result['Semantic Similarity'] = 'Not evaluated (no embedding model configured)';
-  result['Clinical AI/Model Version'] = 'clinical-rules-v2';
+  result['Clinical AI/Model Version'] = 'clinical-rules-v3';
   return result;
 }
 

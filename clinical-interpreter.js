@@ -32,6 +32,7 @@ function ciExpandAbbreviations(value) {
 }
 
 const CI_BODY_SITES = ['head','brain','neck','chest','thorax','abdomen','pelvis','spine','cervical','thoracic','lumbar','sacral','shoulder','arm','elbow','wrist','hand','hip','knee','ankle','foot','leg','thigh','heart','lung','liver','kidney','bladder','prostate','breast','thyroid','sinus','eye','ear'];
+const CI_BODY_SYSTEMS = { head:'neurological', brain:'neurological', neck:'head and neck', chest:'thoracic', thorax:'thoracic', abdomen:'abdominal', pelvis:'pelvic', spine:'musculoskeletal', cervical:'musculoskeletal', thoracic:'thoracic', lumbar:'musculoskeletal', sacral:'musculoskeletal', shoulder:'musculoskeletal', arm:'musculoskeletal', elbow:'musculoskeletal', wrist:'musculoskeletal', hand:'musculoskeletal', hip:'musculoskeletal', knee:'musculoskeletal', ankle:'musculoskeletal', foot:'musculoskeletal', leg:'musculoskeletal', thigh:'musculoskeletal', heart:'cardiovascular', lung:'respiratory', liver:'gastrointestinal', kidney:'renal', bladder:'urinary', prostate:'genitourinary', breast:'breast', thyroid:'endocrine', sinus:'head and neck', eye:'ophthalmological', ear:'otolaryngological' };
 const CI_MODALITY_TERMS = [
   ['computed tomography', ['ct','computed tomography','computerized tomography','computerised tomography']],
   ['magnetic resonance imaging', ['mri','magnetic resonance','mr imaging']],
@@ -56,9 +57,16 @@ function ciHasTerm(text, term) {
   return new RegExp('\\b' + String(term).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '\\b').test(text);
 }
 
+function ciIsUnknown(value) {
+  const normalized = ciNorm(String(value == null ? '' : value));
+  return normalized === '' || normalized === 'unknown' || normalized === 'not specified' || normalized === 'unspecified';
+}
+
+
 function ciCriticalAttributesFor(input, candidate) {
-  const critical = new Set(['modality']);
+  const critical = new Set();
   const mods = [input.modality, candidate.modality].map(v => String(v || '').toLowerCase());
+  if (input.modality || candidate.modality) critical.add('modality');
   if (mods.some(m => m.includes('computed tomography') || m.includes('magnetic resonance'))) critical.add('contrast');
   if (mods.some(m => m.includes('laboratory')) || input.specimen || candidate.specimen || input.method || candidate.method) {
     critical.add('specimen');
@@ -93,7 +101,8 @@ function ciExtractClinicalAttributes(text) {
     exclusions: [],
     explicit: {},
     inferred: {},
-    unknown: []
+    unknown: [],
+    uncertainties: []
   };
   if (!normalized) {
     attributes.unknown = ['service description'];
@@ -112,7 +121,7 @@ function ciExtractClinicalAttributes(text) {
   else if (/\bcontrast\b/.test(normalized)) attributes.contrast = 'contrast mentioned';
 
   for (const site of CI_BODY_SITES) {
-    if (ciHasTerm(normalized, site)) { attributes.bodySite = site; attributes.explicit.bodySite = site; break; }
+    if (ciHasTerm(normalized, site)) { attributes.bodySite = site; attributes.bodySystem = CI_BODY_SYSTEMS[site] || ''; attributes.explicit.bodySite = site; break; }
   }
   for (const specimen of CI_SPECIMEN_TERMS) {
     if (ciHasTerm(normalized, specimen)) { attributes.specimen = specimen; attributes.explicit.specimen = specimen; break; }
@@ -128,11 +137,11 @@ function ciExtractClinicalAttributes(text) {
   for (const [label, needles] of CI_PURPOSE_TERMS) {
     if (needles.some(needle => ciHasTerm(normalized, needle))) { attributes.purpose = label; purposeFound = true; break; }
   }
-  if (!purposeFound) {
-    attributes.purpose = 'diagnostic';
-    attributes.inferred.purpose = 'diagnostic (default, not explicitly stated)';
-  } else {
+  if (purposeFound) {
     attributes.explicit.purpose = attributes.purpose;
+  } else {
+    attributes.uncertainties = attributes.uncertainties || [];
+    attributes.uncertainties.push('Clinical purpose was not explicitly stated in the description.');
   }
 
   for (const population of CI_POPULATION_TERMS) {
@@ -186,14 +195,18 @@ function ciAssessClinicalEquivalence(input, candidate) {
   for (const attr of simpleAttrs) {
     const a = input[attr];
     const b = candidate[attr];
-    if (a && b) {
+    const aPresent = !ciIsUnknown(a);
+    const bPresent = !ciIsUnknown(b);
+    if (aPresent && bPresent) {
       if (ciNorm(String(a)) === ciNorm(String(b))) matching.push(attr);
       else {
         conflicts.push(attr + ': ' + a + ' vs ' + b);
         if (critical.includes(attr)) criticalConflicts.push(attr + ' differs (' + a + ' vs ' + b + ')');
       }
-    } else if (a || b) {
-      missing.push(attr + ' missing in ' + (a ? 'candidate' : 'input'));
+    } else if (aPresent || bPresent) {
+      missing.push(attr + ' missing in ' + (aPresent ? 'candidate' : 'input'));
+    } else if (critical.includes(attr)) {
+      missing.push(attr + ' unknown for both input and candidate');
     }
   }
   if (input.components && input.components.length && candidate.components && candidate.components.length) {
@@ -207,6 +220,8 @@ function ciAssessClinicalEquivalence(input, candidate) {
     }
   } else if ((input.components && input.components.length) || (candidate.components && candidate.components.length)) {
     missing.push('components missing in ' + ((input.components && input.components.length) ? 'candidate' : 'input'));
+  } else if (critical.includes('components')) {
+    missing.push('components unknown for both input and candidate');
   }
   const compatible = conflicts.length === 0;
   const candidatePresent = !!candidate.rawText;
@@ -223,7 +238,7 @@ function ciDescribeClinicalAttributes(attrs) {
   const parts = [];
   if (attrs.modality) parts.push(attrs.modality);
   if (attrs.bodySite) parts.push(attrs.bodySite);
-  if (attrs.contrast && attrs.contrast !== 'unknown') parts.push(attrs.contrast);
+  if (attrs.contrast && !ciIsUnknown(attrs.contrast)) parts.push(attrs.contrast);
   if (attrs.specimen) parts.push(attrs.specimen + ' specimen');
   if (attrs.method) parts.push(attrs.method);
   if (attrs.laterality) parts.push(attrs.laterality);
@@ -234,12 +249,52 @@ function ciDescribeClinicalAttributes(attrs) {
 }
 
 
+function ciValidateClinicalAttributes(attrs) {
+  const errors = [];
+  if (!attrs || typeof attrs !== 'object' || Array.isArray(attrs)) {
+    errors.push('Clinical attributes must be an object.');
+    return { valid: false, errors };
+  }
+  const required = ['rawText','serviceType','clinicalDomain','purpose','bodySite','bodySystem','modality','contrast','contrastRoute','specimen','method','laterality','components','population','exclusions','unknown','uncertainties','explicit','inferred','evidence'];
+  for (const field of required) if (!(field in attrs)) errors.push('Missing required field: ' + field);
+  const typeChecks = { rawText: 'string', serviceType: 'string', clinicalDomain: 'string', purpose: 'string', bodySite: 'string', bodySystem: 'string', modality: 'string', contrast: 'string', contrastRoute: 'string', specimen: 'string', method: 'string', laterality: 'string', components: 'array', population: 'string', exclusions: 'array', unknown: 'array', uncertainties: 'array', explicit: 'object', inferred: 'object', evidence: 'array' };
+  for (const [field, type] of Object.entries(typeChecks)) {
+    if (!(field in attrs)) continue;
+    const value = attrs[field];
+    const ok = type === 'string' ? typeof value === 'string' : type === 'array' ? Array.isArray(value) : type === 'object' ? (typeof value === 'object' && value !== null && !Array.isArray(value)) : true;
+    if (!ok) errors.push('Field ' + field + ' must be a ' + type);
+  }
+  if (attrs.contrast !== undefined && !['unknown','with contrast','without contrast','contrast mentioned'].includes(attrs.contrast)) errors.push('contrast has an unsupported value');
+  return { valid: errors.length === 0, errors };
+}
+
+function ciFinalDecision(result, assessment, context) {
+  const r = result || {};
+  const status = String(r['Auto Match Status / Review Required'] || '').toUpperCase();
+  const candidateText = String(r['Auto Candidate Service Display Name'] || r['Auto Candidate Standardized Service Name'] || '').trim();
+  const critical = String(r['Critical Differences'] || (assessment && Array.isArray(assessment.criticalConflicts) ? assessment.criticalConflicts.join('; ') : '') || '').trim();
+  const missing = String(r['Missing Attributes'] || (assessment && Array.isArray(assessment.missing) ? assessment.missing.join('; ') : '') || '').trim();
+  if (!candidateText) return { decision: 'NO_SAFE_MATCH', reason: 'No catalogue candidate found' };
+  if (critical) return { decision: 'REVIEW_REQUIRED', reason: 'Critical clinical conflict: ' + critical };
+  if (missing) return { decision: 'REVIEW_REQUIRED', reason: 'Required clinical attributes missing: ' + missing };
+  if (status.includes('AMBIGUOUS')) return { decision: 'REVIEW_REQUIRED', reason: 'Multiple clinically plausible catalogue codes' };
+  if (status.includes('EXISTING CODE DISAGREEMENT')) return { decision: 'REVIEW_REQUIRED', reason: 'Suggested code differs from the existing vendor code' };
+  if (status.includes('CATEGORY CONFLICT')) return { decision: 'REVIEW_REQUIRED', reason: 'Catalogue category conflict requires review' };
+  if (status.includes('LOW CONFIDENCE')) return { decision: 'REVIEW_REQUIRED', reason: 'Low text similarity requires review' };
+  if (status.startsWith('EXACT MATCH')) return { decision: 'VERIFIED_CANDIDATE', reason: 'Normalized names match exactly with one unique catalogue code and no clinical conflicts' };
+  return { decision: 'REVIEW_REQUIRED', reason: 'Requires human review' };
+}
+
+
 // Compatibility aliases used by matcher-worker.js and existing tests.
 globalThis.extractClinicalAttributes = ciExtractClinicalAttributes;
 globalThis.assessClinicalEquivalence = ciAssessClinicalEquivalence;
 globalThis.criticalAttributesFor = ciCriticalAttributesFor;
 globalThis.describeClinicalAttributes = ciDescribeClinicalAttributes;
 globalThis.ciNorm = ciNorm;
+globalThis.ciIsUnknown = ciIsUnknown;
+globalThis.validateClinicalAttributes = ciValidateClinicalAttributes;
+globalThis.finalDecision = ciFinalDecision;
 globalThis.ClinicalInterpreter = {
   norm: ciNorm,
   expandAbbreviations: ciExpandAbbreviations,
@@ -247,5 +302,8 @@ globalThis.ClinicalInterpreter = {
   assessClinicalEquivalence: ciAssessClinicalEquivalence,
   criticalAttributesFor: ciCriticalAttributesFor,
   describeClinicalAttributes: ciDescribeClinicalAttributes,
-  version: 'clinical-rules-v2'
+  validateClinicalAttributes: ciValidateClinicalAttributes,
+  finalDecision: ciFinalDecision,
+  isUnknown: ciIsUnknown,
+  version: 'clinical-rules-v3'
 };
