@@ -22,6 +22,8 @@ function ciExpandAbbreviations(value) {
     [/\bekg\b/g, 'electrocardiogram'],
     [/\bx\s*ray\b/g, 'radiograph'],
     [/\bxray\b/g, 'radiograph'],
+    [/\bc\s*section\b/g, 'cesarean section'],
+    [/\bcaesarean\b/g, 'cesarean'],
     [/\bcbc\b/g, 'complete blood count'],
     [/\bua\b/g, 'urinalysis'],
     [/\bctpa\b/g, 'computed tomography pulmonary angiography'],
