@@ -839,8 +839,15 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName);
     workbook.SheetNames = [clientSheetName].concat(remainingSheetNames);
 
-    if (workbook.Workbook && workbook.Workbook.WBProps) {
-      delete workbook.Workbook.WBProps.CodeName;
+    if (workbook.Workbook) {
+      if (workbook.Workbook.WBProps) {
+        delete workbook.Workbook.WBProps.CodeName;
+      }
+      if (Array.isArray(workbook.Workbook.Sheets)) {
+        workbook.Workbook.Sheets.forEach(sheet => {
+          if (sheet) delete sheet.CodeName;
+        });
+      }
     }
     return workbook;
   }
@@ -955,15 +962,9 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
   $('download-btn').addEventListener('click', async () => {
     if (!latestOutputWorkbook) return;
     try {
-      if (window.JSZip) {
+      {
         const workbookData = XLSX.write(latestOutputWorkbook, { bookType: 'xlsx', type: 'array', compression: true });
-        const zip = await JSZip.loadAsync(workbookData);
-        const workbookXmlFile = zip.file('xl/workbook.xml');
-        if (workbookXmlFile) {
-          const workbookXml = await workbookXmlFile.async('string');
-          zip.file('xl/workbook.xml', workbookXml.replace(/\s+codeName="[^"]*"/g, ''));
-        }
-        const blob = await zip.generateAsync({ type: 'blob' });
+        const blob = new Blob([workbookData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
@@ -972,8 +973,6 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
         anchor.click();
         document.body.removeChild(anchor);
         URL.revokeObjectURL(url);
-      } else {
-        XLSX.writeFile(latestOutputWorkbook, latestOutputName, { compression: true });
       }
       toast('Excel output download started');
     } catch (error) { toast(`Download failed: ${error.message}`); }

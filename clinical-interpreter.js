@@ -116,6 +116,13 @@ function ciExtractClinicalAttributes(text) {
       break;
     }
   }
+  if (!attributes.modality) {
+    const therapyMatch = normalized.match(/\b([a-z]+)\s+(?:therapy|treatment)\b/);
+    if (therapyMatch && therapyMatch[1] && !['therapy','treatment'].includes(therapyMatch[1])) {
+      attributes.modality = therapyMatch[1];
+      attributes.explicit.modality = therapyMatch[1];
+    }
+  }
   if (/\bwith contrast\b/.test(normalized)) attributes.contrast = 'with contrast';
   else if (/\bwithout contrast\b|\bnon[- ]?contrast\b|\bplain\b/.test(normalized)) attributes.contrast = 'without contrast';
   else if (/\bcontrast\b/.test(normalized)) attributes.contrast = 'contrast mentioned';
