@@ -82,6 +82,34 @@
     if (upper.includes('HISTORICAL MAPPING') || upper.includes('REVIEWER MAPPING') || upper.includes('MEDICAL TERM VARIANT') || upper.includes('LOCAL AI SUGGESTION') || upper.includes('FUZZY CANDIDATE')) return 'Suggested match — verify';
     return 'Review required';
   }
+  function recommendedAction(row) {
+    const status = String((row && row['Auto Match Status / Review Required']) || '').toUpperCase();
+    const candidate = row ? row['Auto Candidate Service Code'] : '';
+    const check = String((row && row['Auto Existing Code Check']) || '').toUpperCase();
+    if (isBlank(candidate)) return 'No reliable match found - manual catalogue lookup required';
+    if (status.includes('AUTO-APPROVED')) return 'No action needed; code auto-approved';
+    if (status.includes('EXISTING CODE DISAGREEMENT') || check.startsWith('CHECK')) return 'Compare existing code with suggested code before approving';
+    if (status.includes('AMBIGUOUS')) return 'Choose the correct code from the possible matches';
+    if (status.includes('CATEGORY CONFLICT')) return 'Confirm category before approving';
+    if (status.includes('LOW CONFIDENCE')) return 'Manual review required';
+    if (status.includes('BLANK SERVICE NAME')) return 'Add a service name, then re-run matching';
+    if (status.includes('EXACT MATCH')) return 'Verify and approve';
+    if (status.includes('HIGH-CONFIDENCE')) return 'Verify and approve';
+    if (status.includes('LOCAL AI')) return 'Verify the AI-ranked suggestion';
+    if (status.includes('REVIEWER MAPPING')) return 'Confirm the prior reviewer mapping';
+    if (status.includes('HISTORICAL')) return 'Confirm the prior match';
+    if (status.includes('MEDICAL TERM')) return 'Verify the medical-term variant';
+    return 'Review and approve';
+  }
+  function reviewStatusFill(status) {
+    const value = String(status || '').toLowerCase();
+    if (value.startsWith('approved')) return 'C6EFCE';
+    if (value.includes('exact') || value.includes('strong')) return 'DDEBF7';
+    if (value.includes('low') || value.includes('no matching') || value.includes('missing') || value.includes('no reliable')) return 'FCE4D6';
+    if (value.includes('multiple') || value.includes('conflict') || value.includes('differs')) return 'F8CBAD';
+    if (value.includes('unresolved') || value.includes('unmatched')) return 'F2DCDB';
+    return 'FFF2CC';
+  }
   function compactWorksheetColumns(sheet, removedColumns) {
     if (!removedColumns.size) return;
     const removed = [...removedColumns].sort((a, b) => a - b);
@@ -679,6 +707,7 @@
     range.e.r = Math.max(range.e.r, outputRows.length);
     ws['!ref'] = XLSX.utils.encode_range(range);
 
+
     // Preserve the original worksheet formatting and layout; remove any summary tab from an older output.
     if (workbook.Sheets['Auto - Summary']) {
       delete workbook.Sheets['Auto - Summary'];
@@ -694,8 +723,195 @@
         workbook.SheetNames = workbook.SheetNames.filter(name => name !== obsoleteSheet);
       }
     }
+
+    const clientSheetName = 'Client Report';
+    const technicalSheetName = 'Technical Details';
+    for (const obsoleteSheet of [clientSheetName, technicalSheetName]) {
+      if (workbook.Sheets[obsoleteSheet]) {
+        delete workbook.Sheets[obsoleteSheet];
+        workbook.SheetNames = workbook.SheetNames.filter(name => name !== obsoleteSheet);
+      }
+    }
+
+    const totalRecords = outputRows.length;
+    let highConfidenceCount = 0;
+    let reviewRequiredCount = 0;
+    let unresolvedCount = 0;
+    outputRows.forEach(row => {
+      const candidate = row ? row['Auto Candidate Service Code'] : '';
+      const status = String((row && row['Auto Match Status / Review Required']) || '').toUpperCase();
+      if (isBlank(candidate)) {
+        unresolvedCount++;
+        return;
+      }
+      const isHigh = status.includes('AUTO-APPROVED')
+        || status.includes('HIGH-CONFIDENCE')
+        || (status.includes('EXACT MATCH')
+          && !status.includes('CATEGORY CONFLICT')
+          && !status.includes('EXISTING CODE DISAGREEMENT')
+          && !status.includes('AMBIGUOUS'));
+      if (isHigh) highConfidenceCount++;
+      else reviewRequiredCount++;
+    });
+
+    const clientHeaders = [
+      'Original Service Name',
+      'Suggested Code to Select',
+      'Suggested Service Name',
+      'Match Percentage',
+      'Review Status',
+      'Recommended Next Action'
+    ];
+    const clientAoa = [];
+    clientAoa.push(['Client Report - Service Code Match Results']);
+    clientAoa.push([]);
+    clientAoa.push(['Total records processed', totalRecords]);
+    clientAoa.push(['High-confidence candidates', highConfidenceCount]);
+    clientAoa.push(['Candidates requiring review', reviewRequiredCount]);
+    clientAoa.push(['Unresolved records', unresolvedCount]);
+    clientAoa.push([]);
+    const clientHeaderRow = clientAoa.length;
+    clientAoa.push(clientHeaders.slice());
+    outputRows.forEach(row => {
+      clientAoa.push([
+        row && row['Original Service Name'] != null ? row['Original Service Name'] : '',
+        (row && row['Auto Candidate Service Code']) ? row['Auto Candidate Service Code'] : 'No reliable match',
+        (row && row['Auto Candidate Service Display Name']) ? row['Auto Candidate Service Display Name'] : 'No reliable match',
+        Number(row && row['Auto Match Score']) || 0,
+        clientReviewStatus(row && row['Auto Match Status / Review Required']),
+        recommendedAction(row)
+      ]);
+    });
+    const clientWorksheet = XLSX.utils.aoa_to_sheet(clientAoa);
+    clientWorksheet['!cols'] = [
+      { wch: 42 },
+      { wch: 24 },
+      { wch: 42 },
+      { wch: 12 },
+      { wch: 34 },
+      { wch: 46 }
+    ];
+    const clientLastRow = clientAoa.length - 1;
+    const clientLastCol = clientHeaders.length - 1;
+    clientWorksheet['!autofilter'] = {
+      ref: XLSX.utils.encode_range({ s: { r: clientHeaderRow, c: 0 }, e: { r: clientLastRow, c: clientLastCol } })
+    };
+    clientWorksheet['!freeze'] = {
+      xSplit: 0,
+      ySplit: clientHeaderRow + 1,
+      topLeftCell: XLSX.utils.encode_cell({ r: clientHeaderRow + 1, c: 0 }),
+      activePane: 'bottomLeft',
+      state: 'frozen'
+    };
+    for (let c = 0; c < clientHeaders.length; c++) {
+      const address = XLSX.utils.encode_cell({ r: clientHeaderRow, c });
+      if (clientWorksheet[address]) {
+        clientWorksheet[address].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+        };
+      }
+    }
+    outputRows.forEach((row, index) => {
+      const r = clientHeaderRow + 1 + index;
+      const scoreAddress = XLSX.utils.encode_cell({ r, c: 3 });
+      if (clientWorksheet[scoreAddress]) {
+        clientWorksheet[scoreAddress].z = '0.##"%"';
+        clientWorksheet[scoreAddress].s = { alignment: { horizontal: 'center' } };
+      }
+      const statusAddress = XLSX.utils.encode_cell({ r, c: 4 });
+      if (clientWorksheet[statusAddress]) {
+        clientWorksheet[statusAddress].s = {
+          fill: { patternType: 'solid', fgColor: { rgb: reviewStatusFill(clientWorksheet[statusAddress].v) } },
+          alignment: { wrapText: true, vertical: 'top' }
+        };
+      }
+      for (let c = 0; c < clientHeaders.length; c++) {
+        const address = XLSX.utils.encode_cell({ r, c });
+        if (clientWorksheet[address] && c !== 3 && c !== 4) {
+          clientWorksheet[address].s = Object.assign({}, clientWorksheet[address].s || {}, { alignment: { wrapText: true, vertical: 'top' } });
+        }
+      }
+    });
+    for (let r = 0; r <= 5; r++) {
+      const labelAddress = XLSX.utils.encode_cell({ r, c: 0 });
+      const valueAddress = XLSX.utils.encode_cell({ r, c: 1 });
+      if (clientWorksheet[labelAddress] && r >= 2 && r <= 5) {
+        clientWorksheet[labelAddress].s = { font: { bold: true } };
+      }
+      if (r === 0 && clientWorksheet[labelAddress]) {
+        clientWorksheet[labelAddress].s = { font: { bold: true, size: 14, color: { rgb: '1F3864' } } };
+      }
+    }
+
+    const technicalHeaders = OUTPUT_COLUMNS.map(header => OUTPUT_HEADERS[header] || header);
+    const technicalAoa = [technicalHeaders.slice()];
+    outputRows.forEach(row => {
+      technicalAoa.push(OUTPUT_COLUMNS.map(header => {
+        if (header === 'Auto Match Score') return Number(row && row[header]) || 0;
+        const value = row ? row[header] : '';
+        return value == null ? '' : value;
+      }));
+    });
+    const technicalWorksheet = XLSX.utils.aoa_to_sheet(technicalAoa);
+    technicalWorksheet['!cols'] = technicalHeaders.map((header, index) => {
+      if (header === 'Match Percentage' || header === 'Auto Match Score') return { wch: 12 };
+      if (header === 'Other Possible Matches' || header === 'Text Match Evidence' || header === 'Clinical Equivalence Explanation') return { wch: 48 };
+      if (header === 'Original Service Name' || header === 'Suggested Service Name') return { wch: 40 };
+      return { wch: 24 };
+    });
+    const technicalLastRow = technicalAoa.length - 1;
+    const technicalLastCol = technicalHeaders.length - 1;
+    technicalWorksheet['!autofilter'] = {
+      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: technicalLastRow, c: technicalLastCol } })
+    };
+    technicalWorksheet['!freeze'] = {
+      xSplit: 0,
+      ySplit: 1,
+      topLeftCell: 'A2',
+      activePane: 'bottomLeft',
+      state: 'frozen'
+    };
+    for (let c = 0; c < technicalHeaders.length; c++) {
+      const address = XLSX.utils.encode_cell({ r: 0, c });
+      if (technicalWorksheet[address]) {
+        technicalWorksheet[address].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+        };
+      }
+    }
+    const statusColumnIndex = OUTPUT_COLUMNS.indexOf('Auto Match Status / Review Required');
+    outputRows.forEach((row, index) => {
+      const r = index + 1;
+      if (statusColumnIndex >= 0) {
+        const address = XLSX.utils.encode_cell({ r, c: statusColumnIndex });
+        if (technicalWorksheet[address]) {
+          technicalWorksheet[address].s = {
+            fill: { patternType: 'solid', fgColor: { rgb: reviewStatusFill(clientReviewStatus(technicalWorksheet[address].v)) } },
+            alignment: { wrapText: true, vertical: 'top' }
+          };
+        }
+      }
+      const scoreColumnIndex = OUTPUT_COLUMNS.indexOf('Auto Match Score');
+      if (scoreColumnIndex >= 0) {
+        const address = XLSX.utils.encode_cell({ r, c: scoreColumnIndex });
+        if (technicalWorksheet[address]) {
+          technicalWorksheet[address].z = '0.##"%"';
+        }
+      }
+    });
+
+    workbook.Sheets[clientSheetName] = clientWorksheet;
+    workbook.Sheets[technicalSheetName] = technicalWorksheet;
+    const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName && name !== technicalSheetName);
+    workbook.SheetNames = [clientSheetName, technicalSheetName].concat(remainingSheetNames);
+
     return workbook;
   }
+
 
   $('run-btn').addEventListener('click', async () => {
     if (!savedMaster || !sourceWorkbook) return;
@@ -815,5 +1031,7 @@
     if (!window.XLSX) setMessage($('master-message'), 'Excel reader could not load from the SheetJS CDN. Check your internet connection and refresh.', 'error');
     await refreshSavedMaster();
   }
+  if (typeof globalThis !== 'undefined') globalThis.buildOutputWorkbook = buildOutputWorkbook;
+  if (typeof window !== 'undefined') window.buildOutputWorkbook = buildOutputWorkbook;
   boot().catch(error => setMessage($('master-message'), error.message, 'error'));
 })();

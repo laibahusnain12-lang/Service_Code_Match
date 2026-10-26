@@ -8,7 +8,7 @@ A static, browser-based tool for matching records in a spreadsheet against a ref
 - Stores the reference catalogue locally in the browser (IndexedDB), so it only needs to be imported once per browser
 - Matches input records against the catalogue and returns a suggested code, suggested name, and match score
 - Flags each row with a review status and a reviewer decision column
-- Exports a new workbook with the original sheets preserved and results added
+- Exports a new workbook with original sheets preserved, plus a client-ready Client Report sheet and a full Technical Details sheet
 - Processes all data locally in a Web Worker; workbook contents are never sent to a server
 - Optional local AI re-ranking of uncertain matches via [Ollama](https://ollama.com)
 
