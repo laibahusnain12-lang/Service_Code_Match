@@ -20,22 +20,7 @@
     'Reviewer Decision',
     'Approved Service Code',
     'Review Notes',
-    'Original Service Name',
-    'Input Clinical Attributes',
-    'Candidate Clinical Attributes',
-    'Text Match Evidence',
-    'Clinical Equivalence Explanation',
-    'Matching Attributes',
-    'Missing Attributes',
-    'Critical Differences',
-    'Clinical Compatibility',
-    'Reference Verification Status',
-    'Code System',
-    'Code System Version',
-    'Decision',
-    'Decision Reason',
-    'Semantic Similarity',
-    'Clinical AI/Model Version'
+    'Original Service Name'
   ];
   const OUTPUT_HEADERS = {
     'Auto Candidate Service Code': 'Suggested Code to Select',
@@ -49,22 +34,7 @@
     'Reviewer Decision': 'Reviewer Decision',
     'Approved Service Code': 'Approved Service Code',
     'Review Notes': 'Review Notes',
-    'Original Service Name': 'Original Service Name',
-    'Input Clinical Attributes': 'Input Clinical Attributes',
-    'Candidate Clinical Attributes': 'Candidate Clinical Attributes',
-    'Text Match Evidence': 'Text Match Evidence',
-    'Clinical Equivalence Explanation': 'Clinical Equivalence Explanation',
-    'Matching Attributes': 'Matching Attributes',
-    'Missing Attributes': 'Missing Attributes',
-    'Critical Differences': 'Critical Differences',
-    'Clinical Compatibility': 'Clinical Compatibility',
-    'Reference Verification Status': 'Reference Verification Status',
-    'Code System': 'Code System',
-    'Code System Version': 'Code System Version',
-    'Decision': 'Decision',
-    'Decision Reason': 'Decision Reason',
-    'Semantic Similarity': 'Semantic Similarity',
-    'Clinical AI/Model Version': 'Clinical AI/Model Version'
+    'Original Service Name': 'Original Service Name'
   };
   const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).map(([key, header]) => [header, key]));
 
@@ -706,6 +676,10 @@
     range.e.c = Math.max(range.e.c, nextCol - 1);
     range.e.r = Math.max(range.e.r, outputRows.length);
     ws['!ref'] = XLSX.utils.encode_range(range);
+     if (Array.isArray(ws['!cols'])) {
+       while (ws['!cols'].length <= range.e.c) ws['!cols'].push({ wch: 24 });
+     }
+
 
 
     // Preserve the original worksheet formatting and layout; remove any summary tab from an older output.
