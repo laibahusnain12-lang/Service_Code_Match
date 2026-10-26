@@ -120,6 +120,12 @@
 
   function isBlank(value) { return value == null || String(value).trim() === ''; }
   function text(value) { return isBlank(value) ? '' : String(value).trim(); }
+  function sanitizeExcelText(value) {
+    const raw = value == null ? '' : String(value);
+    // Remove characters that are invalid in OOXML worksheet text.
+    const cleaned = raw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '');
+    return cleaned.length > 32767 ? cleaned.slice(0, 32767) : cleaned;
+  }
   function normalize(value) {
     if (isBlank(value)) return '';
     return String(value).normalize('NFKC').toLocaleLowerCase().trim()
@@ -654,7 +660,7 @@
     });
     OUTPUT_COLUMNS.forEach(header => {
       const cellAddress = XLSX.utils.encode_cell({ r: 0, c: outCols[header] });
-      const cell = { t: 's', v: OUTPUT_HEADERS[header] || header };
+      const cell = { t: 's', v: sanitizeExcelText(OUTPUT_HEADERS[header] || header) };
       copyCellStyle(cell, headerStyleTemplate);
       ws[cellAddress] = cell;
     });
@@ -669,7 +675,7 @@
           ws[cellAddress] = { t: 'n', v: Number(value) || 0, z: '0.##"%"' };
         } else {
           const displayValue = header === 'Auto Match Status / Review Required' ? clientReviewStatus(value) : value;
-          ws[cellAddress] = { t: 's', v: String(displayValue) };
+          ws[cellAddress] = { t: 's', v: sanitizeExcelText(displayValue) };
         }
       });
     });
@@ -737,23 +743,23 @@
       'Recommended Next Action'
     ];
     const clientAoa = [];
-    clientAoa.push(['Client Report - Service Code Match Results']);
+    clientAoa.push([sanitizeExcelText('Client Report - Service Code Match Results')]);
     clientAoa.push([]);
-    clientAoa.push(['Total records processed', totalRecords]);
-    clientAoa.push(['High-confidence candidates', highConfidenceCount]);
-    clientAoa.push(['Candidates requiring review', reviewRequiredCount]);
-    clientAoa.push(['Unresolved records', unresolvedCount]);
+    clientAoa.push([sanitizeExcelText('Total records processed'), totalRecords]);
+    clientAoa.push([sanitizeExcelText('High-confidence candidates'), highConfidenceCount]);
+    clientAoa.push([sanitizeExcelText('Candidates requiring review'), reviewRequiredCount]);
+    clientAoa.push([sanitizeExcelText('Unresolved records'), unresolvedCount]);
     clientAoa.push([]);
     const clientHeaderRow = clientAoa.length;
-    clientAoa.push(clientHeaders.slice());
+    clientAoa.push(clientHeaders.map(sanitizeExcelText));
     outputRows.forEach(row => {
       clientAoa.push([
-        row && row['Original Service Name'] != null ? row['Original Service Name'] : '',
-        (row && row['Auto Candidate Service Code']) ? row['Auto Candidate Service Code'] : 'No reliable match',
-        (row && row['Auto Candidate Service Display Name']) ? row['Auto Candidate Service Display Name'] : 'No reliable match',
+        sanitizeExcelText(row && row['Original Service Name'] != null ? row['Original Service Name'] : ''),
+        sanitizeExcelText((row && row['Auto Candidate Service Code']) ? row['Auto Candidate Service Code'] : 'No reliable match'),
+        sanitizeExcelText((row && row['Auto Candidate Service Display Name']) ? row['Auto Candidate Service Display Name'] : 'No reliable match'),
         Number(row && row['Auto Match Score']) || 0,
-        clientReviewStatus(row && row['Auto Match Status / Review Required']),
-        recommendedAction(row)
+        sanitizeExcelText(clientReviewStatus(row && row['Auto Match Status / Review Required'])),
+        sanitizeExcelText(recommendedAction(row))
       ]);
     });
     const clientWorksheet = XLSX.utils.aoa_to_sheet(clientAoa);
@@ -819,13 +825,13 @@
       }
     }
 
-    const technicalHeaders = OUTPUT_COLUMNS.map(header => OUTPUT_HEADERS[header] || header);
+    const technicalHeaders = OUTPUT_COLUMNS.map(header => sanitizeExcelText(OUTPUT_HEADERS[header] || header));
     const technicalAoa = [technicalHeaders.slice()];
     outputRows.forEach(row => {
       technicalAoa.push(OUTPUT_COLUMNS.map(header => {
         if (header === 'Auto Match Score') return Number(row && row[header]) || 0;
         const value = row ? row[header] : '';
-        return value == null ? '' : value;
+        return sanitizeExcelText(value == null ? '' : value);
       }));
     });
     const technicalWorksheet = XLSX.utils.aoa_to_sheet(technicalAoa);
@@ -883,6 +889,9 @@
     const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName && name !== technicalSheetName);
     workbook.SheetNames = [clientSheetName, technicalSheetName].concat(remainingSheetNames);
 
+    if (workbook.Workbook && workbook.Workbook.WBProps) {
+      delete workbook.Workbook.WBProps.CodeName;
+    }
     return workbook;
   }
 
@@ -993,10 +1002,29 @@
       : '');
   });
 
-  $('download-btn').addEventListener('click', () => {
+  $('download-btn').addEventListener('click', async () => {
     if (!latestOutputWorkbook) return;
     try {
-      XLSX.writeFile(latestOutputWorkbook, latestOutputName, { compression: true });
+      if (window.JSZip) {
+        const workbookData = XLSX.write(latestOutputWorkbook, { bookType: 'xlsx', type: 'array', compression: true });
+        const zip = await JSZip.loadAsync(workbookData);
+        const workbookXmlFile = zip.file('xl/workbook.xml');
+        if (workbookXmlFile) {
+          const workbookXml = await workbookXmlFile.async('string');
+          zip.file('xl/workbook.xml', workbookXml.replace(/\s+codeName="[^"]*"/g, ''));
+        }
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = latestOutputName;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(url);
+      } else {
+        XLSX.writeFile(latestOutputWorkbook, latestOutputName, { compression: true });
+      }
       toast('Excel output download started');
     } catch (error) { toast(`Download failed: ${error.message}`); }
   });
