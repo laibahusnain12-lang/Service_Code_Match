@@ -62,12 +62,39 @@ function candidateDetails(candidates) {
   const displays = distinct('display');
   const groups = distinct('group');
   const subgroups = distinct('subgroup');
+  const vendors = distinct('vendor');
+  const charges = distinct('charges');
+  const pairs = [];
+  const seenPairs = new Set();
+  for (const candidate of candidates || []) {
+    const vendor = String(candidate.vendor || candidate.provider || candidate['Vendor'] || candidate['Provider'] || '').trim();
+    const charge = String(candidate.charges || candidate.price || candidate['Charges'] || candidate['Price'] || '').trim();
+    if (!vendor && !charge) continue;
+    const key = vendor + '\u241f' + charge;
+    if (seenPairs.has(key)) continue;
+    seenPairs.add(key);
+    pairs.push({ vendor, charges: charge });
+  }
+  pairs.sort((a, b) => String(a.vendor).localeCompare(String(b.vendor)) || String(a.charges).localeCompare(String(b.charges)));
+  const standardVendor = pairs.length
+    ? pairs.map(pair => pair.vendor).filter(Boolean).join(' | ') || vendors.join(' | ')
+    : (vendors.length ? vendors.join(' | ') : '');
+  const standardCharges = pairs.length
+    ? pairs.map(pair => pair.charges).filter(Boolean).join(' | ') || charges.join(' | ')
+    : (charges.length ? charges.join(' | ') : '');
   return {
     codes,
     standard: standards.length === 1 ? standards[0] : (displays.length ? displays[0] : ''),
     display: displays.length === 1 ? displays[0] : (displays.length ? displays[0] : ''),
     group: groups.length === 1 ? groups[0] : '',
     subgroup: subgroups.length === 1 ? subgroups[0] : '',
+    vendors,
+    charges,
+    vendor: vendors.length === 1 ? vendors[0] : (vendors.length > 1 ? vendors.join('; ') : ''),
+    chargesValue: charges.length === 1 ? charges[0] : (charges.length > 1 ? charges.join('; ') : ''),
+    standardVendor,
+    standardCharges,
+    vendorChargePairs: pairs,
     categoryConflict: groups.length > 1 || subgroups.length > 1 || standards.length > 1
   };
 }
@@ -93,6 +120,10 @@ function setSuggestedCandidate(result, candidates, sourceContext = {}, existingC
   result['Auto Candidate Service Display Name'] = suggested.display || '';
   result['Auto Candidate Group'] = suggested.group || '';
   result['Auto Candidate Sub Group'] = suggested.subgroup || '';
+  result['Auto Candidate Standard Service Vendor / Provider'] = suggested.vendor || suggested.provider || suggested['Vendor'] || suggested['Provider'] || '';
+  result['Auto Candidate Standard Service Charges / Price'] = suggested.charges || suggested.price || suggested['Charges'] || suggested['Price'] || '';
+  result['Auto Candidate Standard Vendor'] = result['Auto Candidate Standard Service Vendor / Provider'];
+  result['Auto Candidate Standard Charges'] = result['Auto Candidate Standard Service Charges / Price'];
 }
 
 function candidateLabel(candidate) {
@@ -165,6 +196,10 @@ function emptyResult() {
     'Auto Candidate Service Display Name': '',
     'Auto Candidate Group': '',
     'Auto Candidate Sub Group': '',
+    'Auto Candidate Standard Service Vendor / Provider': '',
+    'Auto Candidate Standard Service Charges / Price': '',
+    'Auto Candidate Standard Vendor': '',
+    'Auto Candidate Standard Charges': '',
     'Auto Match Score': 0,
     'Auto Match Method': 'None',
     'Auto Match Status / Review Required': 'No Match — UNMATCHED — no candidate found',
@@ -214,6 +249,8 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       group: String(original.group || '').trim(),
       subgroup: String(original.subgroup || '').trim(),
       status: String(original.status || '').trim(),
+      vendor: String(original.vendor || original.provider || original['Vendor'] || original['Provider'] || original['Vendor Name'] || original['Provider Name'] || original['Standard Vendor'] || original['Standard Provider'] || '').trim(),
+      charges: String(original.charges || original.price || original.rate || original.cost || original.fee || original.amount || original['Charges'] || original['Price'] || original['Rate'] || original['Cost'] || original['Fee'] || original['Amount'] || original['Standard Charges'] || original['Standard Price'] || '').trim(),
       codeSystem: String(original.codeSystem || original.code_system || original['Code System'] || '').trim(),
       codeSystemVersion: String(original.codeSystemVersion || original.code_system_version || original['Code System Version'] || '').trim()
     };
@@ -221,7 +258,7 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
     if (norm(candidate.status).split(' ').some(word => inactiveWords.has(word))) { excludedInactive++; continue; }
     if (!codeMap.has(candidate.code)) codeMap.set(candidate.code, []);
     codeMap.get(candidate.code).push(candidate);
-    const signature = JSON.stringify([candidate.code, candidate.display, candidate.standard, candidate.group, candidate.subgroup, candidate.status]);
+    const signature = JSON.stringify([candidate.code, candidate.display, candidate.standard, candidate.group, candidate.subgroup, candidate.status, candidate.vendor, candidate.charges]);
     let added = false;
     for (const name of [candidate.display, candidate.standard]) {
       const key = norm(name);
@@ -278,7 +315,7 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
     if (!key || !code) continue;
     if (!approvedNameMap.has(key)) approvedNameMap.set(key, new Map());
     const mappingKey = `${code}\u241f${norm(original.group)}\u241f${norm(original.subgroup)}`;
-    approvedNameMap.get(key).set(mappingKey, { code, group: String(original.group || '').trim(), subgroup: String(original.subgroup || '').trim() });
+    approvedNameMap.get(key).set(mappingKey, { code, group: String(original.group || '').trim(), subgroup: String(original.subgroup || '').trim(), vendor: String(original.vendor || '').trim(), charges: String(original.charges || '').trim() });
   }
   for (const original of historicalMappings || []) {
     const key = norm(original.sourceName || original.name);
@@ -293,6 +330,8 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
         standard: String(original.standard || '').trim(),
         group: String(original.group || '').trim(),
         subgroup: String(original.subgroup || '').trim(),
+        vendor: String(original.vendor || '').trim(),
+        charges: String(original.charges || '').trim(),
         status: String(original.status || 'Historical automated match; review required').trim()
       });
     }
@@ -527,6 +566,10 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Match Score'] = 100;
     result['Auto Match Method'] = `Exact normalized (${query.label})`;
     result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, [[key, 100]]);
@@ -572,6 +615,10 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Match Score'] = 98;
     result['Auto Match Method'] = `Controlled medical term variant (${query.label})`;
     result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, matchedKeys.map(key => [key, 98]));
@@ -618,6 +665,10 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Match Score'] = 100;
     result['Auto Match Method'] = `Reviewer-approved mapping (${query.label})`;
     result['Auto Candidate Alternatives'] = candidates.map(candidate => candidateLabel(candidate)).join(' | ');
@@ -638,6 +689,10 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Match Score'] = 95;
     result['Auto Match Method'] = `Historical prior match (${query.label})`;
     result['Auto Candidate Alternatives'] = candidates.map(candidate => `${candidateLabel(candidate)} (historical)`).join(' | ').slice(0, 3000);
@@ -1119,6 +1174,26 @@ function enrichResultWithClinical(result, rawName, standardizedName, ctx) {
       verification = codeSystem === 'Unknown (not specified in reference catalogue)'
         ? 'Catalogue entry present; code system/version not supplied by reference catalogue'
         : ('Catalogue entry present; code system "' + codeSystem + '" recorded (not independently verified)');
+      const vendorPairs = [];
+      const seenVendorPairs = new Set();
+      for (const record of records) {
+        const vendor = String(record.vendor || record.provider || record['Vendor'] || record['Provider'] || '').trim();
+        const charge = String(record.charges || record.price || record['Charges'] || record['Price'] || '').trim();
+        if (!vendor && !charge) continue;
+        const key = vendor + '\u241f' + charge;
+        if (seenVendorPairs.has(key)) continue;
+        seenVendorPairs.add(key);
+        vendorPairs.push({ vendor, charges: charge });
+      }
+      vendorPairs.sort((a, b) => String(a.vendor).localeCompare(String(b.vendor)) || String(a.charges).localeCompare(String(b.charges)));
+      if (!String(result['Auto Candidate Standard Service Vendor / Provider'] || '').trim()) {
+        result['Auto Candidate Standard Service Vendor / Provider'] = vendorPairs.map(pair => pair.vendor).filter(Boolean).join(' | ');
+      }
+      if (!String(result['Auto Candidate Standard Service Charges / Price'] || '').trim()) {
+        result['Auto Candidate Standard Service Charges / Price'] = vendorPairs.map(pair => pair.charges).filter(Boolean).join(' | ');
+      }
+      result['Auto Candidate Standard Vendor'] = result['Auto Candidate Standard Service Vendor / Provider'];
+      result['Auto Candidate Standard Charges'] = result['Auto Candidate Standard Service Charges / Price'];
     }
   }
   result['Code System'] = codeSystem;

@@ -254,6 +254,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     const statusCol = chooseColumn(headers, ['status', 'Status'], false);
     const codeSystemCol = chooseColumn(headers, ['Code System', 'Coding System', 'Code System Name'], false);
     const codeSystemVersionCol = chooseColumn(headers, ['Code System Version', 'Version', 'Release'], false);
+    const vendorCol = chooseColumn(headers, ['Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Supplier', 'Standard Vendor', 'Standard Provider', 'Service Vendor', 'Service Provider'], false);
+    const chargesCol = chooseColumn(headers, ['Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Standard Charges', 'Standard Price', 'Service Charges', 'Service Price', 'Charge'], false);
     const records = [];
     for (let rowIndex = 1; rowIndex < matrix.length; rowIndex++) {
       const row = matrix[rowIndex] || [];
@@ -273,7 +275,9 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
         subgroup: getCell(row, subgroupCol),
         status,
          codeSystem: getCell(row, codeSystemCol),
-         codeSystemVersion: getCell(row, codeSystemVersionCol)
+         codeSystemVersion: getCell(row, codeSystemVersionCol),
+         vendor: getCell(row, vendorCol),
+         charges: getCell(row, chargesCol)
       });
     }
     if (!records.length) throw new Error('No usable service names and codes found in the selected reference sheet.');
@@ -293,6 +297,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       const standardCol = chooseColumn(headers, ['Standardized Service Name', 'Standarized Service Name'], false);
       const groupCol = chooseColumn(headers, ['Standard Group (Reference)', 'Group'], false);
       const subgroupCol = chooseColumn(headers, ['Standard Sub Group (Reference)', 'Sub Group'], false);
+      const vendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Standard Vendor', 'Standard Provider'], false);
+      const chargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge'], false);
       const candidatesByName = new Map();
       for (const row of matrix.slice(1)) {
         if (normalize(getCell(row, statusCol)) !== 'match') continue;
@@ -309,6 +315,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
             standard: getCell(row, standardCol),
             group: getCell(row, groupCol),
             subgroup: getCell(row, subgroupCol),
+            vendor: getCell(row, vendorCol),
+            charges: getCell(row, chargesCol),
             status: 'Historical automated match; review required',
             sourceName: name
           });
@@ -332,6 +340,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       if (decisionCol == null || nameCol == null || codeCol == null) continue;
       const groupCol = chooseColumn(headers, ['Vendor Group'], false);
       const subgroupCol = chooseColumn(headers, ['Vendor Sub Group'], false);
+      const standardVendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Standard Vendor', 'Vendor', 'Provider'], false);
+      const standardChargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount'], false);
       for (const row of matrix.slice(1)) {
         if (normalize(getCell(row, decisionCol)) !== 'approved') continue;
         const sourceName = getCell(row, nameCol);
@@ -341,7 +351,9 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
           sourceName,
           code,
           group: getCell(row, groupCol),
-          subgroup: getCell(row, subgroupCol)
+          subgroup: getCell(row, subgroupCol),
+          vendor: getCell(row, standardVendorCol),
+          charges: getCell(row, standardChargesCol)
         });
       }
     }
@@ -361,6 +373,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       const standardCol = chooseColumn(headers, ['Auto Candidate Standardized Service Name', 'Auto Candidate Service Name', 'Standardized Service Name'], false);
       const groupCol = chooseColumn(headers, ['Auto Candidate Group', 'Suggested Group'], false);
       const subgroupCol = chooseColumn(headers, ['Auto Candidate Sub Group', 'Suggested Sub Group'], false);
+      const vendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Suggested Standard Service Vendor / Provider', 'Vendor', 'Provider'], false);
+      const chargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Suggested Standard Service Charges / Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount'], false);
       for (const row of matrix.slice(1)) {
         const sourceName = getCell(row, nameCol);
         const code = getCell(row, codeCol);
@@ -372,6 +386,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
           standard: getCell(row, standardCol),
           group: getCell(row, groupCol),
           subgroup: getCell(row, subgroupCol),
+          vendor: getCell(row, vendorCol),
+          charges: getCell(row, chargesCol),
           status: 'Imported workbook suggestion; review required'
         });
       }
@@ -407,6 +423,7 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     const groupCol = chooseColumn(headers, ['Group', 'Vendor Group'], false);
     const subgroupCol = chooseColumn(headers, ['Sub Group', 'Subgroup', 'Vendor Sub Group'], false);
     const vendorCol = chooseColumn(headers, ['Vendor Name', 'Provider Name'], false);
+    const chargesCol = chooseColumn(headers, ['Vendor Charges', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge'], false);
     const rows = matrix.slice(1).map((row, index) => ({
       sourceRowNumber: index + 2,
       rawName: getCell(row || [], serviceCol),
@@ -414,9 +431,10 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       existingCode: getCell(row || [], existingCodeCol),
       sourceGroup: getCell(row || [], groupCol),
       sourceSubgroup: getCell(row || [], subgroupCol),
-      vendorName: getCell(row || [], vendorCol)
+      vendorName: getCell(row || [], vendorCol),
+      sourceCharges: getCell(row || [], chargesCol)
     }));
-    return { rows, matrix, headers, groupCol, subgroupCol, vendorCol };
+    return { rows, matrix, headers, groupCol, subgroupCol, vendorCol, chargesCol };
   }
 
   function setChip(chip, label, ready) {
@@ -745,12 +763,20 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     });
 
     const clientHeaders = [
-      'Original Service Name',
-      'Suggested Code to Select',
-      'Suggested Service Name',
-      'Match Percentage',
-      'Review Status',
-      'Recommended Next Action'
+      'Vendor Name',
+      'Original Vendor Service Name',
+      'Vendor Service Code',
+      'Vendor Charges',
+      'Suggested Standardized Service Name',
+      'Suggested Standard Code',
+      'Standard Service Group',
+      'Standard Service Subgroup',
+      'Standard Service Vendor / Provider',
+      'Standard Service Charges / Price',
+      'Match Status',
+      'Match Confidence / Score',
+      'Match Explanation',
+      'Review Reason'
     ];
     const clientAoa = [];
     clientAoa.push([sanitizeExcelText('Client Report - Service Code Match Results')]);
@@ -762,24 +788,57 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     clientAoa.push([]);
     const clientHeaderRow = clientAoa.length;
     clientAoa.push(clientHeaders.map(sanitizeExcelText));
-    outputRows.forEach(row => {
+    outputRows.forEach((row, index) => {
+      const sourceRow = (sourceRows && sourceRows[index]) || {};
+      const vendorName = text(sourceRow.vendorName || sourceRow.Vendor || sourceRow['Vendor Name'] || row['Vendor'] || row['Vendor Name'] || '');
+      const originalServiceName = text(row['Original Service Name'] || sourceRow.rawName || sourceRow['Service Name'] || '');
+      const vendorServiceCode = text(sourceRow.existingCode || sourceRow['Service Code'] || '');
+      const vendorCharges = text(sourceRow.sourceCharges || sourceRow.charges || sourceRow['Vendor Charges'] || row['Vendor Charges'] || '');
+      const suggestedStandardName = text(row['Auto Candidate Standardized Service Name'] || row['Auto Candidate Service Display Name'] || '');
+      const suggestedCode = text(row['Auto Candidate Service Code'] || '');
+      const standardGroup = text(row['Auto Candidate Group'] || '');
+      const standardSubgroup = text(row['Auto Candidate Sub Group'] || '');
+      const standardVendor = text(row['Auto Candidate Standard Service Vendor / Provider'] || row['Auto Candidate Standard Vendor'] || row['Standard Service Vendor / Provider'] || '');
+      const standardCharges = text(row['Auto Candidate Standard Service Charges / Price'] || row['Auto Candidate Standard Charges'] || row['Standard Service Charges / Price'] || '');
+      const matchStatus = clientReviewStatus(row['Auto Match Status / Review Required']);
+      const score = Number(row['Auto Match Score']) || 0;
+      const explanation = text(row['Clinical Equivalence Explanation'] || row['Text Match Evidence'] || row['Auto Match Method'] || '');
+      const reviewReason = text(row['Decision Reason'] || row['Critical Differences'] || row['Missing Attributes'] || recommendedAction(row) || '');
+      // Leave suggested standard-service fields blank when there is no reliable candidate.
+      const hasCandidate = !isBlank(suggestedCode) || !isBlank(suggestedStandardName);
       clientAoa.push([
-        sanitizeExcelText(row && row['Original Service Name'] != null ? row['Original Service Name'] : ''),
-        sanitizeExcelText((row && row['Auto Candidate Service Code']) ? row['Auto Candidate Service Code'] : 'No reliable match'),
-        sanitizeExcelText((row && row['Auto Candidate Service Display Name']) ? row['Auto Candidate Service Display Name'] : 'No reliable match'),
-        Number(row && row['Auto Match Score']) || 0,
-        sanitizeExcelText(clientReviewStatus(row && row['Auto Match Status / Review Required'])),
-        sanitizeExcelText(recommendedAction(row))
+        sanitizeExcelText(vendorName),
+        sanitizeExcelText(originalServiceName),
+        sanitizeExcelText(vendorServiceCode),
+        sanitizeExcelText(vendorCharges),
+        sanitizeExcelText(hasCandidate ? suggestedStandardName : ''),
+        sanitizeExcelText(hasCandidate ? suggestedCode : ''),
+        sanitizeExcelText(hasCandidate ? standardGroup : ''),
+        sanitizeExcelText(hasCandidate ? standardSubgroup : ''),
+        sanitizeExcelText(hasCandidate ? standardVendor : ''),
+        sanitizeExcelText(hasCandidate ? standardCharges : ''),
+        sanitizeExcelText(matchStatus),
+        score,
+        sanitizeExcelText(explanation),
+        sanitizeExcelText(reviewReason)
       ]);
     });
     const clientWorksheet = XLSX.utils.aoa_to_sheet(clientAoa);
     clientWorksheet['!cols'] = [
-      { wch: 42 },
       { wch: 24 },
-      { wch: 42 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 28 },
       { wch: 12 },
-      { wch: 34 },
-      { wch: 46 }
+      { wch: 46 },
+      { wch: 40 }
     ];
     const clientLastRow = clientAoa.length - 1;
     const clientLastCol = clientHeaders.length - 1;
@@ -805,12 +864,12 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     }
     outputRows.forEach((row, index) => {
       const r = clientHeaderRow + 1 + index;
-      const scoreAddress = XLSX.utils.encode_cell({ r, c: 3 });
+      const scoreAddress = XLSX.utils.encode_cell({ r, c: 11 });
       if (clientWorksheet[scoreAddress]) {
         clientWorksheet[scoreAddress].z = '0.##"%"';
         clientWorksheet[scoreAddress].s = { alignment: { horizontal: 'center' } };
       }
-      const statusAddress = XLSX.utils.encode_cell({ r, c: 4 });
+      const statusAddress = XLSX.utils.encode_cell({ r, c: 10 });
       if (clientWorksheet[statusAddress]) {
         clientWorksheet[statusAddress].s = {
           fill: { patternType: 'solid', fgColor: { rgb: reviewStatusFill(clientWorksheet[statusAddress].v) } },
@@ -819,7 +878,7 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       }
       for (let c = 0; c < clientHeaders.length; c++) {
         const address = XLSX.utils.encode_cell({ r, c });
-        if (clientWorksheet[address] && c !== 3 && c !== 4) {
+        if (clientWorksheet[address] && c !== 10 && c !== 11) {
           clientWorksheet[address].s = Object.assign({}, clientWorksheet[address].s || {}, { alignment: { wrapText: true, vertical: 'top' } });
         }
       }
@@ -835,6 +894,35 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       }
     }
 
+    const auditSheetName = 'Technical Details';
+    if (workbook.Sheets[auditSheetName]) {
+      delete workbook.Sheets[auditSheetName];
+      workbook.SheetNames = workbook.SheetNames.filter(name => name !== auditSheetName);
+    }
+    const auditHeaders = outputRows.length ? Object.keys(outputRows[0]) : [];
+    const auditAoa = [auditHeaders.map(sanitizeExcelText)];
+    outputRows.forEach(row => {
+      auditAoa.push(auditHeaders.map(header => {
+        const value = row && row[header];
+        if (value == null) return '';
+        if (header === 'Auto Match Score') return Number(value) || 0;
+        return sanitizeExcelText(value);
+      }));
+    });
+    const auditWorksheet = XLSX.utils.aoa_to_sheet(auditAoa);
+    auditWorksheet['!cols'] = auditHeaders.map(() => ({ wch: 28 }));
+    auditWorksheet['!autofilter'] = {
+      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, auditAoa.length - 1), c: Math.max(0, auditHeaders.length - 1) } })
+    };
+    auditWorksheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    for (let c = 0; c < auditHeaders.length; c++) {
+      const address = XLSX.utils.encode_cell({ r: 0, c });
+      if (auditWorksheet[address]) {
+        auditWorksheet[address].s = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } };
+      }
+    }
+    workbook.Sheets[auditSheetName] = auditWorksheet;
+    if (!workbook.SheetNames.includes(auditSheetName)) workbook.SheetNames.push(auditSheetName);
     workbook.Sheets[clientSheetName] = clientWorksheet;
     const remainingSheetNames = workbook.SheetNames.filter(name => name !== clientSheetName);
     workbook.SheetNames = [clientSheetName].concat(remainingSheetNames);
