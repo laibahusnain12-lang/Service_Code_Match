@@ -247,8 +247,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     if (!matrix.length) throw new Error('The selected reference sheet is empty.');
     const headers = matrix[0] || [];
     const codeCol = chooseColumn(headers, ['Ser. Code', 'Service Code', 'Standardized Service Code']);
-    const displayCol = chooseColumn(headers, ['Service Display Name', 'Matched Display Name', 'Service Name']);
-    const standardCol = chooseColumn(headers, ['Standarized Service Name', 'Standardized Service Name', 'Standardised Service Name'], false);
+    const displayCol = chooseColumn(headers, ['Service Display Name', 'Matched Display Name', 'Service Name'], false);
+    const standardCol = chooseColumn(headers, ['Standarized Service Name', 'Standardized Service Name', 'Standardised Service Name']);
     const groupCol = chooseColumn(headers, ['Group', 'Standard Group'], false);
     const subgroupCol = chooseColumn(headers, ['Sub Group', 'Subgroup', 'Standard Sub Group'], false);
     const statusCol = chooseColumn(headers, ['status', 'Status'], false);

@@ -120,7 +120,8 @@ function compareExisting(existing, candidate) {
 function setAiRecommendation(row) {
   const status = String(row['Auto Match Status / Review Required'] || '').toUpperCase();
   const check = String(row['Auto Existing Code Check'] || '');
-  const exactUnique = status.startsWith('EXACT MATCH')
+  const exactUnique = (status.startsWith('EXACT MATCH') || status.startsWith('MATCHED — EXACT MATCH'))
+    && !status.includes('AMBIGUOUS')
     && Number(row['Auto Match Score']) === 100
     && !status.includes('CATEGORY CONFLICT')
     && !status.includes('EXISTING CODE DISAGREEMENT')
@@ -129,7 +130,7 @@ function setAiRecommendation(row) {
     && blank(row['Missing Attributes'])
     && !blank(row['Auto Candidate Service Code']);
   if (exactUnique) {
-    row['Auto Match Status / Review Required'] = 'EXACT MATCH — auto-approved (100%, unique code, no conflicts)';
+    row['Auto Match Status / Review Required'] = 'Matched — EXACT MATCH — auto-approved (100%, unique code, no conflicts)';
     row['AI Recommendation'] = 'Auto-approved — exact unique match';
     row['Reviewer Decision'] = 'Auto-Approved (100% exact)';
     row['Approved Service Code'] = row['Auto Candidate Service Code'];
@@ -157,6 +158,8 @@ function setAiRecommendation(row) {
 function emptyResult() {
   return {
     'Original Service Name': '',
+    'Vendor': '',
+    'Vendor Name': '',
     'Auto Candidate Service Code': '',
     'Auto Candidate Standardized Service Name': '',
     'Auto Candidate Service Display Name': '',
@@ -164,7 +167,7 @@ function emptyResult() {
     'Auto Candidate Sub Group': '',
     'Auto Match Score': 0,
     'Auto Match Method': 'None',
-    'Auto Match Status / Review Required': 'UNMATCHED — no candidate found',
+    'Auto Match Status / Review Required': 'No Match — UNMATCHED — no candidate found',
     'Auto Candidate Alternatives': '',
     'Auto Existing Code Check': 'No candidate assigned',
     'AI Recommendation': 'Review carefully',
@@ -228,6 +231,40 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       if (!seen.has(signature)) { nameMap.get(key).push(candidate); seen.add(signature); added = true; }
     }
     if (added) { indexedCount++; uniqueCodes.add(candidate.code); }
+  }
+  // Master catalogue validation: one code <-> one standardized service name.
+  const codeToStandards = new Map();
+  const standardToCodes = new Map();
+  for (const original of masterRecords || []) {
+    const code = String(original.code || '').trim();
+    if (!code) continue;
+    const status = String(original.status || '').trim();
+    const words = norm(status).split(' ');
+    if (['inactive', 'disabled', 'retired', 'discontinued', 'deleted'].some(word => words.includes(word))) continue;
+    const standard = String(original.standard || original.display || '').trim();
+    const stdKey = norm(standard);
+    if (!stdKey) continue;
+    if (!codeToStandards.has(code)) codeToStandards.set(code, new Set());
+    codeToStandards.get(code).add(stdKey);
+    if (!standardToCodes.has(stdKey)) standardToCodes.set(stdKey, new Set());
+    standardToCodes.get(stdKey).add(code);
+  }
+  const conflictedCodes = new Set([...codeToStandards.entries()].filter(([, standards]) => standards.size > 1).map(([code]) => code));
+  const conflictedStandards = new Set([...standardToCodes.entries()].filter(([, codes]) => codes.size > 1).map(([standard]) => standard));
+  // Mark candidate trust.
+  for (const arr of nameMap.values()) {
+    for (const candidate of arr) {
+      const stdKey = norm(candidate.standard || candidate.display);
+      candidate.trusted = !conflictedCodes.has(candidate.code) && !conflictedStandards.has(stdKey);
+      candidate.masterConflict = !candidate.trusted;
+    }
+  }
+  for (const arr of codeMap.values()) {
+    for (const candidate of arr) {
+      const stdKey = norm(candidate.standard || candidate.display);
+      candidate.trusted = !conflictedCodes.has(candidate.code) && !conflictedStandards.has(stdKey);
+      candidate.masterConflict = !candidate.trusted;
+    }
   }
   if (!nameMap.size) throw new Error('No usable reference names and codes were found. Check the selected reference sheet and column headings.');
 
@@ -295,7 +332,7 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       keyClinical.set(key, extractClinicalAttributes(text));
     }
   }
-  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, keyClinical, stats: {
+  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, keyClinical, conflictedCodes, conflictedStandards, stats: {
     referenceCount: indexedCount,
     uniqueNames: nameMap.size,
     uniqueCodes: uniqueCodes.size,
@@ -470,6 +507,8 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
   const standardized = String(standardizedName || '').trim();
   const existing = String(existingCode || '').trim();
   const resultEmpty = emptyResult();
+  resultEmpty['Vendor'] = String(sourceContext.vendorName || sourceContext.Vendor || sourceContext['Vendor Name'] || '').trim();
+  resultEmpty['Vendor Name'] = resultEmpty['Vendor'];
   const queries = [];
   if (!blank(raw)) queries.push({ value: raw, label: 'Service Name' });
   if (!blank(standardized) && norm(standardized) !== norm(raw)) queries.push({ value: standardized, label: 'Standardized Service Name' });
@@ -491,17 +530,34 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Match Score'] = 100;
     result['Auto Match Method'] = `Exact normalized (${query.label})`;
     result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, [[key, 100]]);
+    const exactCode = detail.codes.length === 1 ? detail.codes[0] : '';
+    const standardKey = norm(detail.standard || detail.display);
+    const masterInvalid = !!exactCode && ((ctx.conflictedCodes && ctx.conflictedCodes.has(exactCode)) || (ctx.conflictedStandards && ctx.conflictedStandards.has(standardKey)));
     if (detail.codes.length === 1) {
-      result['Auto Candidate Service Code'] = detail.codes[0];
-      result['Auto Match Status / Review Required'] = !detail.categoryConflict
-        ? 'EXACT MATCH — code found; verify before approval'
-        : 'EXACT MATCH — code unique; category conflict needs review';
-      result['Auto Existing Code Check'] = compareExisting(existing, result['Auto Candidate Service Code']);
+      if (masterInvalid) {
+        result['Auto Candidate Service Code'] = '';
+        result['Auto Match Status / Review Required'] = 'Invalid Master Reference — master catalogue conflict for ' + (detail.standard || detail.display || exactCode);
+        result['Auto Existing Code Check'] = 'Invalid master reference; code not assigned';
+      } else {
+        result['Auto Candidate Service Code'] = detail.codes[0];
+        result['Auto Match Status / Review Required'] = !detail.categoryConflict
+          ? 'Matched — EXACT MATCH — code found; verify before approval'
+          : 'Matched — EXACT MATCH — code unique; category conflict needs review';
+        result['Auto Existing Code Check'] = compareExisting(existing, result['Auto Candidate Service Code']);
+      }
     } else if (detail.codes.length > 1) {
-      setSuggestedCandidate(result, candidates, sourceContext, existing);
-      result['Auto Match Status / Review Required'] = 'AMBIGUOUS EXACT MATCH — multiple reference codes';
-      result['Auto Candidate Alternatives'] = candidates.map(c => candidateLabel(c)).join(' | ').slice(0, 3000);
-      result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+      const allMasterConflicted = candidates.length > 0 && candidates.every(c => c.masterConflict);
+      if (allMasterConflicted) {
+        result['Auto Candidate Service Code'] = '';
+        result['Auto Candidate Alternatives'] = candidates.map(c => candidateLabel(c)).join(' | ').slice(0, 3000);
+        result['Auto Match Status / Review Required'] = 'Invalid Master Reference — master catalogue conflict for ' + (detail.standard || detail.display || detail.codes.join(', '));
+        result['Auto Existing Code Check'] = 'Invalid master reference; code not assigned';
+      } else {
+        setSuggestedCandidate(result, candidates, sourceContext, existing);
+        result['Auto Match Status / Review Required'] = 'AMBIGUOUS EXACT MATCH — multiple reference codes';
+        result['Auto Candidate Alternatives'] = candidates.map(c => candidateLabel(c)).join(' | ').slice(0, 3000);
+        result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+      }
     }
     return result;
   }
@@ -799,6 +855,125 @@ async function rerankWithLocalOllama(message, results, context, fuzzyFind, resul
   return { applied, considered: limited.length, available: candidates.length };
 }
 
+function annotateVendorValidations(results, sourceRows) {
+  const rows = (results || []).map((result, index) => ({ result: result || {}, input: (sourceRows || [])[index] || {} }));
+  const vendorFor = (item) => String(item.result['Vendor'] || item.result['Vendor Name'] || item.input.vendorName || item.input.Vendor || item.input['Vendor Name'] || '').trim();
+  const codeFor = (item) => String(item.result['Auto Candidate Service Code'] || '').trim();
+  const mark = (item, reason) => {
+    const status = String(item.result['Auto Match Status / Review Required'] || '');
+    if (!status.includes('Conflicting Vendor Assignment')) {
+      item.result['Auto Match Status / Review Required'] = 'Conflicting Vendor Assignment — ' + reason + '; ' + status;
+    }
+  };
+
+  const byVendorCode = new Map();
+  rows.forEach((item) => {
+    const vendor = vendorFor(item);
+    const code = codeFor(item);
+    if (!vendor || !code) return;
+    const key = vendor + '\u241f' + code.toUpperCase();
+    if (!byVendorCode.has(key)) byVendorCode.set(key, []);
+    byVendorCode.get(key).push(item);
+  });
+  byVendorCode.forEach((group) => {
+    if (group.length < 2) return;
+    const standards = new Set(group.map((item) => norm(item.result['Auto Candidate Standardized Service Name'] || item.result['Auto Candidate Service Display Name'])));
+    if (standards.size > 1) group.forEach((item) => mark(item, 'same vendor and Standard Code map to different standardized services'));
+  });
+
+  const byVendorService = new Map();
+  rows.forEach((item) => {
+    const vendor = vendorFor(item);
+    const service = norm(item.result['Original Service Name'] || item.input.rawName || item.input.raw_name);
+    const code = codeFor(item);
+    if (!vendor || !service || !code) return;
+    const key = vendor + '\u241f' + service;
+    if (!byVendorService.has(key)) byVendorService.set(key, new Map());
+    const codeMap = byVendorService.get(key);
+    if (!codeMap.has(code)) codeMap.set(code, []);
+    codeMap.get(code).push(item);
+  });
+  byVendorService.forEach((codeMap) => {
+    if (codeMap.size <= 1) return;
+    for (const group of codeMap.values()) group.forEach((item) => mark(item, 'same vendor service name assigned to multiple Standard Codes'));
+  });
+
+  const byVendorDisplay = new Map();
+  rows.forEach((item) => {
+    const vendor = vendorFor(item);
+    const display = norm(item.result['Auto Candidate Service Display Name'] || item.result['Auto Candidate Standardized Service Name']);
+    const code = codeFor(item);
+    if (!vendor || !display || !code) return;
+    const key = vendor + '\u241f' + display;
+    if (!byVendorDisplay.has(key)) byVendorDisplay.set(key, new Map());
+    const codeMap = byVendorDisplay.get(key);
+    if (!codeMap.has(code)) codeMap.set(code, []);
+    codeMap.get(code).push(item);
+  });
+  byVendorDisplay.forEach((codeMap) => {
+    if (codeMap.size <= 1) return;
+    for (const group of codeMap.values()) group.forEach((item) => mark(item, 'same display name assigned to multiple Standard Codes'));
+  });
+}
+
+function validateMasterCatalogue(masterRecords) {
+  const records = masterRecords || [];
+  const codeToStandards = new Map();
+  const standardToCodes = new Map();
+  const rowEntries = [];
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i] || {};
+    const code = String(r.code || r['Standard Code'] || r['Service Code'] || r['Ser. Code'] || '').trim();
+    const standard = String(r.standard || r['Standardized Service Name'] || r['Standarized Service Name'] || r.display || r['Service Display Name'] || '').trim();
+    const stdKey = norm(standard);
+    if (!code || !stdKey) continue;
+    const status = String(r.status || r.Status || '').trim();
+    const words = norm(status).split(' ');
+    if (['inactive','disabled','retired','discontinued','deleted'].some(w => words.includes(w))) continue;
+    rowEntries.push({ index: i, record: r, code, standard, stdKey });
+    if (!codeToStandards.has(code)) codeToStandards.set(code, new Set());
+    codeToStandards.get(code).add(stdKey);
+    if (!standardToCodes.has(stdKey)) standardToCodes.set(stdKey, new Set());
+    standardToCodes.get(stdKey).add(code);
+  }
+  const conflictedCodes = new Set([...codeToStandards.entries()].filter(([,s])=>s.size>1).map(([c])=>c));
+  const conflictedStandards = new Set([...standardToCodes.entries()].filter(([,c])=>c.size>1).map(([s])=>s));
+  const conflicts = [];
+  // code -> multiple standards
+  for (const [code, standards] of codeToStandards.entries()) {
+    if (standards.size <= 1) continue;
+    const rows = rowEntries.filter(e => e.code === code);
+    conflicts.push({ type: 'code_multiple_services', code, standards: [...standards], rows: rows.map(e => e.record), rowIndices: rows.map(e=>e.index) });
+  }
+  // standard -> multiple codes
+  for (const [standard, codes] of standardToCodes.entries()) {
+    if (codes.size <= 1) continue;
+    const rows = rowEntries.filter(e => e.stdKey === standard);
+    conflicts.push({ type: 'service_multiple_codes', standardizedService: standard, codes: [...codes], rows: rows.map(e => e.record), rowIndices: rows.map(e=>e.index) });
+  }
+  const trustedRecords = rowEntries.filter(e => !conflictedCodes.has(e.code) && !conflictedStandards.has(e.stdKey)).map(e=>e.record);
+  return {
+    valid: conflicts.length === 0,
+    conflicts,
+    conflictedCodes: [...conflictedCodes],
+    conflictedStandards: [...conflictedStandards],
+    trustedRecords,
+    trustedCount: trustedRecords.length,
+    total: rowEntries.length
+  };
+}
+
+// Aliases
+globalThis.validateMasterCatalogue = validateMasterCatalogue;
+globalThis.validateMasterRecords = validateMasterCatalogue;
+globalThis.validateReferenceCatalogue = validateMasterCatalogue;
+globalThis.validateMaster = validateMasterCatalogue;
+globalThis.masterCatalogueValidation = validateMasterCatalogue;
+
+globalThis.validateVendorAssignments = annotateVendorValidations;
+globalThis.validateVendorRecords = annotateVendorValidations;
+globalThis.vendorValidation = annotateVendorValidations;
+
 function processMatching(message) {
   const context = makeIndex(message.masterRecords || [], message.historicalMappings || [], message.approvedMappings || []);
   const fuzzyFind = makeFuzzyFinder(context);
@@ -852,6 +1027,7 @@ function processMatching(message) {
     if (completed < inputRows.length) setTimeout(processBatch, 0);
     else {
       const finish = (llmSummary = null) => {
+        annotateVendorValidations(results, message.sourceRows || []);
         for (const key of Object.keys(counts)) delete counts[key];
         results.forEach(row => {
           const status = row['Auto Match Status / Review Required'];

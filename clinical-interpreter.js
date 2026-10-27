@@ -41,7 +41,9 @@ const CI_MODALITY_TERMS = [
   ['laboratory', ['lab','laboratory','blood test','urine test','serology','biochemistry','pathology']],
   ['electrocardiogram', ['ecg','ekg','electrocardiogram','electrocardiograph']],
   ['endoscopy', ['endoscopy','colonoscopy','gastroscopy','bronchoscopy','cystoscopy']],
-  ['biopsy', ['biopsy','fnac','fine needle aspiration']]
+  ['biopsy', ['biopsy','fnac','fine needle aspiration']],
+  ['laser', ['laser','laser therapy','laser treatment']],
+  ['wax', ['wax','waxing','wax therapy']]
 ];
 const CI_SPECIMEN_TERMS = ['blood','serum','plasma','urine','stool','sputum','swab','tissue','csf','saliva','bone marrow'];
 const CI_METHOD_TERMS = ['culture','pcr','elisa','microscopy','histopathology','cytology','immunoassay','chromatography','spectrometry','electrophoresis'];
@@ -281,7 +283,7 @@ function ciFinalDecision(result, assessment, context) {
   if (status.includes('EXISTING CODE DISAGREEMENT')) return { decision: 'REVIEW_REQUIRED', reason: 'Suggested code differs from the existing vendor code' };
   if (status.includes('CATEGORY CONFLICT')) return { decision: 'REVIEW_REQUIRED', reason: 'Catalogue category conflict requires review' };
   if (status.includes('LOW CONFIDENCE')) return { decision: 'REVIEW_REQUIRED', reason: 'Low text similarity requires review' };
-  if (status.startsWith('EXACT MATCH')) return { decision: 'VERIFIED_CANDIDATE', reason: 'Normalized names match exactly with one unique catalogue code and no clinical conflicts' };
+  if (status.includes('EXACT MATCH') && !status.includes('AMBIGUOUS')) return { decision: 'VERIFIED_CANDIDATE', reason: 'Normalized names match exactly with one unique catalogue code and no clinical conflicts' };
   return { decision: 'REVIEW_REQUIRED', reason: 'Requires human review' };
 }
 

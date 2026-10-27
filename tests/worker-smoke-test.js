@@ -94,8 +94,8 @@ function getReviewRows(rows) {
   assert(rows[6]['Reviewer Decision'] === 'Pending', 'A prior approval should not auto-approve a new vendor row');
   assert(!rows[7]['Auto Match Status / Review Required'].startsWith('REVIEWER MAPPING SUGGESTION'), 'A reviewer-approved mapping must not cross into another category');
   assert(rows[7]['Reviewer Decision'] === 'Pending', 'A suggestion after a category mismatch must remain pending');
-  assert(rows[8]['Auto Candidate Service Code'] === 'C005', 'An existing code and matching category should rank the corresponding ambiguous code as the suggestion');
-  assert(rows[8]['Auto Match Status / Review Required'].startsWith('AMBIGUOUS'), 'Ambiguous row should be flagged');
+  assert(rows[8]['Auto Candidate Service Code'] === '', 'Conflicting master mappings must not assign a trusted code');
+  assert(rows[8]['Auto Match Status / Review Required'].startsWith('Invalid Master Reference'), 'Conflicting master mappings must be flagged as invalid master references');
   assert(rows[8]['Auto Candidate Alternatives'].includes('C004') && rows[8]['Auto Candidate Alternatives'].includes('C005'), 'Ambiguous exact matches should return every possible reference code for review');
   assert(rows[8]['Reviewer Decision'] === 'Pending', 'Ambiguous exact matches must remain pending');
   assert(rows[8]['Approved Service Code'] === '', 'An ambiguous suggested code must not be marked approved');
