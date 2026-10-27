@@ -30,12 +30,52 @@ const MEDICAL_TERM_ALIASES = [
   [/\b(?:e\s*c\s*g|ecg|ekg|electrocardiogram)\b/g, 'electrocardiogram'],
   [/\b(?:usg|ultrasonography|ultrasound)\b/g, 'ultrasound'],
   [/\b(?:x\s*ray|xray|radiograph)\b/g, 'radiograph'],
+  [/\b(?:c\s*section|cesarean|caesarean)\b(?! section)/g, 'cesarean section'],
   [/\b(?:opg|orthopantomogram)\b/g, 'orthopantomogram'],
   [/\b(?:cbc|complete blood count)\b/g, 'complete blood count'],
   [/\b(?:lfts?|liver function tests?)\b/g, 'liver function test'],
   [/\b(?:rfts?|renal function tests?)\b/g, 'renal function test']
 ];
 
+function clinicalSignature(attrs) {
+  if (!attrs || typeof attrs !== 'object') return '';
+  const components = Array.isArray(attrs.components) ? attrs.components.slice().sort().join('+') : '';
+  const parts = [
+    String(attrs.serviceType || '').trim(),
+    String(attrs.modality || '').trim(),
+    String(attrs.bodySite || '').trim(),
+    String(attrs.purpose || '').trim(),
+    components,
+    String(attrs.specimen || '').trim(),
+    String(attrs.method || '').trim()
+  ];
+  if (!parts[0]) return '';
+  const specific = parts.slice(1).some(part => part && part.trim() !== '');
+  if (!specific) return '';
+  return parts.join('|');
+}
+
+function clinicalSimilarity(a, b) {
+  if (!a || !b) return 0;
+  const attrs = ['serviceType', 'modality', 'bodySite', 'purpose', 'specimen', 'method', 'clinicalDomain'];
+  let matches = 0;
+  let total = 0;
+  for (const attr of attrs) {
+    const av = String(a[attr] || '').trim().toLowerCase();
+    const bv = String(b[attr] || '').trim().toLowerCase();
+    if (av || bv) {
+      total++;
+      if (av && av === bv) matches++;
+    }
+  }
+  const aComponents = Array.isArray(a.components) ? a.components.map(v => String(v).toLowerCase()).sort() : [];
+  const bComponents = Array.isArray(b.components) ? b.components.map(v => String(v).toLowerCase()).sort() : [];
+  if (aComponents.length || bComponents.length) {
+    total++;
+    if (aComponents.length === bComponents.length && aComponents.every((v, i) => v === bComponents[i])) matches++;
+  }
+  return total ? matches / total : 0;
+}
 function blank(value) { return value == null || String(value).trim() === ''; }
 function norm(value) {
   if (blank(value)) return '';
@@ -202,7 +242,7 @@ function emptyResult() {
     'Auto Candidate Standard Charges': '',
     'Auto Match Score': 0,
     'Auto Match Method': 'None',
-    'Auto Match Status / Review Required': 'No Match — UNMATCHED — no candidate found',
+    'Auto Match Status / Review Required': 'UNMATCHED — no candidate found; assign new code',
     'Auto Candidate Alternatives': '',
     'Auto Existing Code Check': 'No candidate assigned',
     'AI Recommendation': 'Review carefully',
@@ -371,7 +411,14 @@ function makeIndex(masterRecords, historicalMappings = [], approvedMappings = []
       keyClinical.set(key, extractClinicalAttributes(text));
     }
   }
-  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, keyClinical, conflictedCodes, conflictedStandards, stats: {
+  const clinicalSignatureMap = new Map();
+  for (const key of keys) {
+    const signature = (typeof clinicalSignature === 'function') ? clinicalSignature(keyClinical.get(key)) : '';
+    if (!signature) continue;
+    if (!clinicalSignatureMap.has(signature)) clinicalSignatureMap.set(signature, []);
+    clinicalSignatureMap.get(signature).push(key);
+  }
+  return { nameMap, codeMap, medicalNameMap, historicalNameMap, approvedNameMap, keys, keyMeta, gramIndex, tokenIndex, firstLetterIndex, lengthIndex, keyClinical, clinicalSignatureMap, conflictedCodes, conflictedStandards, stats: {
     referenceCount: indexedCount,
     uniqueNames: nameMap.size,
     uniqueCodes: uniqueCodes.size,
@@ -710,6 +757,35 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
 
   const inputTextForClinical = standardized || raw;
   const inputAttrs = (typeof extractClinicalAttributes === 'function') ? extractClinicalAttributes(inputTextForClinical) : null;
+  if (inputAttrs) {
+    const signature = clinicalSignature(inputAttrs);
+    const signatureKeys = signature ? (ctx.clinicalSignatureMap.get(signature) || []) : [];
+    if (signatureKeys.length) {
+      const candidates = signatureKeys.flatMap(key => ctx.nameMap.get(key) || []);
+      const detail = candidateDetails(candidates);
+      const result = { ...resultEmpty };
+      result['Auto Candidate Standardized Service Name'] = detail.standard;
+      result['Auto Candidate Service Display Name'] = detail.display;
+      result['Auto Candidate Group'] = detail.group;
+      result['Auto Candidate Sub Group'] = detail.subgroup;
+      result['Auto Match Score'] = 99;
+      result['Auto Match Method'] = 'Clinical medical equivalence (service, modality, anatomy, purpose)';
+      result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, signatureKeys.map(key => [key, 99]));
+      if (detail.codes.length === 1) {
+        result['Auto Candidate Service Code'] = detail.codes[0];
+        result['Auto Match Status / Review Required'] = detail.categoryConflict
+          ? 'CLINICAL MATCH — category conflict needs review'
+          : 'CLINICAL MATCH — verify before approval';
+        result['Auto Existing Code Check'] = compareExisting(existing, detail.codes[0]);
+      } else if (detail.codes.length > 1) {
+        setSuggestedCandidate(result, candidates, sourceContext, existing);
+        result['Auto Match Status / Review Required'] = 'AMBIGUOUS CLINICAL MATCH — multiple reference codes';
+        result['Auto Candidate Alternatives'] = [...new Set(candidates.map(candidateLabel))].join(' | ').slice(0, 3000);
+        result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+      }
+      return result;
+    }
+  }
   const ranked = new Map();
   const sourceForKey = new Map();
   let bestQueryValue = '';
@@ -727,12 +803,28 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
       const c = ctx.keyClinical.get(key);
       if (!c) return false;
       return (inputAttrs.modality && c.modality === inputAttrs.modality)
-        || (inputAttrs.bodySite && c.bodySite === inputAttrs.bodySite);
+        || (inputAttrs.bodySite && c.bodySite === inputAttrs.bodySite)
+        || (inputAttrs.serviceType && c.serviceType === inputAttrs.serviceType && (inputAttrs.purpose || inputAttrs.modality || inputAttrs.bodySite));
     }).slice(0, 12);
     for (const key of clinicalKeys) if (!ranked.has(key)) ranked.set(key, 60);
   }
   const sorted = [...ranked.entries()].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  if (!sorted.length) return resultEmpty;
+  if (!sorted.length) {
+    if (inputAttrs && ctx.keyClinical) {
+      const suggestionKeys = ctx.keys
+        .map(key => [key, clinicalSimilarity(inputAttrs, ctx.keyClinical.get(key))])
+        .filter(([, score]) => score >= 0.35)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 5)
+        .map(([key]) => key);
+      if (suggestionKeys.length) {
+        resultEmpty['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, suggestionKeys.map(key => [key, 50]));
+      }
+    }
+    resultEmpty['Auto Match Status / Review Required'] = 'UNMATCHED — no candidate found; assign new code';
+    resultEmpty['Decision Reason'] = 'No catalogue candidate found; assign new code';
+    return resultEmpty;
+  }
   const [bestKey, bestScore] = sorted[0];
   const bestCandidates = ctx.nameMap.get(bestKey) || [];
   const detail = candidateDetails(bestCandidates);
@@ -748,21 +840,29 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
   const tiedCodes = new Set();
   tiedKeys.forEach(key => (ctx.nameMap.get(key) || []).forEach(c => { if (c.code) tiedCodes.add(c.code); }));
   if (detail.codes.length > 1) {
-    setSuggestedCandidate(result, bestCandidates, sourceContext, existing);
-    result['Auto Match Status / Review Required'] = 'AMBIGUOUS FUZZY CANDIDATE — multiple codes in reference';
-    result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+    if (bestScore >= thresholds.review) setSuggestedCandidate(result, bestCandidates, sourceContext, existing);
+    else result['Auto Candidate Service Code'] = '';
+    result['Auto Match Status / Review Required'] = bestScore >= thresholds.review
+      ? 'AMBIGUOUS FUZZY CANDIDATE — multiple codes in reference'
+      : `LOW CONFIDENCE — ambiguous candidates below ${thresholds.review}% — assign new code`;
+    result['Auto Candidate Alternatives'] = [...new Set(bestCandidates.map(candidateLabel))].join(' | ').slice(0, 3000);
+    result['Auto Existing Code Check'] = bestScore >= thresholds.review ? 'Ambiguous candidate; existing code not evaluated' : 'No unambiguous candidate code';
   } else if (tiedCodes.size > 1) {
     const tiedCandidates = tiedKeys.flatMap(key => ctx.nameMap.get(key) || []);
-    setSuggestedCandidate(result, tiedCandidates, sourceContext, existing);
-    result['Auto Match Status / Review Required'] = 'AMBIGUOUS FUZZY CANDIDATES — top score ties across codes';
-    result['Auto Existing Code Check'] = 'Ambiguous candidate; existing code not evaluated';
+    if (bestScore >= thresholds.review) setSuggestedCandidate(result, tiedCandidates, sourceContext, existing);
+    else result['Auto Candidate Service Code'] = '';
+    result['Auto Match Status / Review Required'] = bestScore >= thresholds.review
+      ? 'AMBIGUOUS FUZZY CANDIDATES — top score ties across codes'
+      : `LOW CONFIDENCE — ambiguous candidates below ${thresholds.review}% — assign new code`;
+    result['Auto Existing Code Check'] = bestScore >= thresholds.review ? 'Ambiguous candidate; existing code not evaluated' : 'No unambiguous candidate code';
   } else {
-    result['Auto Candidate Service Code'] = detail.codes[0] || '';
-    if (bestScore < thresholds.review) result['Auto Match Status / Review Required'] = `LOW CONFIDENCE — candidate below ${thresholds.review}% — manual review`;
+    if (bestScore >= thresholds.review) result['Auto Candidate Service Code'] = detail.codes[0] || '';
+    else result['Auto Candidate Service Code'] = '';
+    if (bestScore < thresholds.review) result['Auto Match Status / Review Required'] = `LOW CONFIDENCE — candidate below ${thresholds.review}% — assign new code`;
     else if (bestScore >= thresholds.high || isSingleTypoMatch(bestQueryValue, bestKey)) result['Auto Match Status / Review Required'] = 'HIGH-CONFIDENCE FUZZY CANDIDATE — verify before approval';
     else result['Auto Match Status / Review Required'] = 'FUZZY CANDIDATE — manual review required';
-    if (detail.categoryConflict) result['Auto Match Status / Review Required'] += '; reference category conflict';
-    result['Auto Existing Code Check'] = compareExisting(existing, result['Auto Candidate Service Code']);
+    if (detail.categoryConflict && bestScore >= thresholds.review) result['Auto Match Status / Review Required'] += '; reference category conflict';
+    result['Auto Existing Code Check'] = (bestScore >= thresholds.review && result['Auto Candidate Service Code']) ? compareExisting(existing, result['Auto Candidate Service Code']) : 'No unambiguous candidate code';
   }
   return result;
 }
@@ -790,7 +890,8 @@ function llmCandidatePool(input, ctx, fuzzyFind) {
         display: candidate.display,
         standard: candidate.standard,
         group: candidate.group,
-        subgroup: candidate.subgroup
+        subgroup: candidate.subgroup,
+        attributes: (typeof extractClinicalAttributes === 'function') ? extractClinicalAttributes((candidate.display || '') + ' ' + (candidate.standard || '')) : {}
       });
       if (pool.length >= 12) return pool;
     }
@@ -818,7 +919,7 @@ async function callLocalOllama(endpoint, model, batch) {
         messages: [
           {
             role: 'system',
-            content: 'You rank possible matches for a human reviewer. Select only a supplied candidate index; never invent codes. Compare the service wording, modality, anatomy, and procedure context. Similar spelling alone is not equivalence. If no candidate is clearly supported, return choice null. Return only JSON with this shape: {"rankings":[{"query_id":"q0","choice":0}]}. The choice must be an integer index into that query candidates array or null.'
+            content: 'You are a medical coding expert and clinical matching reviewer. Select only a supplied candidate index; never invent codes. Compare the underlying clinical service, not spelling or shared generic words like therapy or consultation. Require agreement in modality, anatomy/body site, purpose, specimen, method, components, population, laterality, and contrast when present. Treat C-section and cesarean section as the same service, but laser therapy and wax therapy as different. If no candidate is clearly clinically equivalent, return choice null. Return only JSON with this shape: {"rankings":[{"query_id":"q0","choice":0}]}. The choice must be an integer index into that query candidates array or null.'
           },
           { role: 'user', content: JSON.stringify(batch) }
         ]
@@ -859,12 +960,14 @@ async function rerankWithLocalOllama(message, results, context, fuzzyFind, resul
       standardized: String(item.input.standardizedName || '').slice(0, 300),
       vendor_group: String(item.input.sourceGroup || '').slice(0, 120),
       vendor_subgroup: String(item.input.sourceSubgroup || '').slice(0, 120),
+      clinical_attributes: (typeof extractClinicalAttributes === 'function') ? extractClinicalAttributes((item.input.rawName || '') + ' ' + (item.input.standardizedName || '')) : {},
       candidates: item.pool.map(candidate => ({
         code: candidate.code,
         display: candidate.display,
         standardized: candidate.standard,
         group: candidate.group,
-        subgroup: candidate.subgroup
+        subgroup: candidate.subgroup,
+        clinical_attributes: candidate.attributes || {}
       }))
     }));
     const rankings = await callLocalOllama(config.endpoint, config.model, batchItems);
@@ -1203,9 +1306,13 @@ function enrichResultWithClinical(result, rawName, standardizedName, ctx) {
   result['Text Match Evidence'] = (result['Auto Match Method'] || 'None') + '; score ' + result['Auto Match Score'];
   const final = (typeof finalDecision === 'function') ? finalDecision(result, assessment, { ctx: ctx }) : { decision: 'REVIEW_REQUIRED', reason: 'Requires human review' };
   result['Decision'] = final.decision;
-  if (final.decision === 'NO_SAFE_MATCH') result['Decision Reason'] = final.reason;
-  else if (final.reason && final.reason !== 'Requires human review') result['Decision Reason'] = final.reason;
-  else if (!String(result['Decision Reason'] || '').trim()) result['Decision Reason'] = final.reason;
+  if (!String(result['Auto Candidate Service Code'] || '').trim()) {
+    if (final.decision === 'NO_SAFE_MATCH') result['Decision Reason'] = final.reason || 'No catalogue candidate found; assign new code';
+    else if (final.reason && final.reason !== 'Requires human review') result['Decision Reason'] = final.reason;
+    else if (!String(result['Decision Reason'] || '').trim()) result['Decision Reason'] = 'No catalogue candidate found; assign new code';
+  } else {
+    result['Decision Reason'] = final.reason || 'Requires human review';
+  }
   result['Semantic Similarity'] = 'Not evaluated (no embedding model configured)';
   result['Clinical AI/Model Version'] = 'clinical-rules-v3';
   return result;

@@ -22,6 +22,8 @@ function ciExpandAbbreviations(value) {
     [/\bekg\b/g, 'electrocardiogram'],
     [/\bx\s*ray\b/g, 'radiograph'],
     [/\bxray\b/g, 'radiograph'],
+    [/\bc\s*section\b/g, 'cesarean section'],
+    [/\bcaesarean\b/g, 'cesarean'],
     [/\bcbc\b/g, 'complete blood count'],
     [/\bua\b/g, 'urinalysis'],
     [/\bctpa\b/g, 'computed tomography pulmonary angiography'],
@@ -116,6 +118,13 @@ function ciExtractClinicalAttributes(text) {
       attributes.modality = label;
       attributes.explicit.modality = label;
       break;
+    }
+  }
+  if (!attributes.modality) {
+    const therapyMatch = normalized.match(/\b([a-z]+)\s+(?:therapy|treatment)\b/);
+    if (therapyMatch && therapyMatch[1] && !['therapy','treatment'].includes(therapyMatch[1])) {
+      attributes.modality = therapyMatch[1];
+      attributes.explicit.modality = therapyMatch[1];
     }
   }
   if (/\bwith contrast\b/.test(normalized)) attributes.contrast = 'with contrast';
