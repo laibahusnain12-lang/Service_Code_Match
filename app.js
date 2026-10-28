@@ -121,6 +121,7 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
   const $ = (id) => document.getElementById(id);
   let dbPromise;
   let savedMaster = null;
+  let vendorReference = null;
   let sourceWorkbook = null;
   let sourceFileName = '';
   let sourceSheetName = '';
@@ -254,8 +255,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     const statusCol = chooseColumn(headers, ['status', 'Status'], false);
     const codeSystemCol = chooseColumn(headers, ['Code System', 'Coding System', 'Code System Name'], false);
     const codeSystemVersionCol = chooseColumn(headers, ['Code System Version', 'Version', 'Release'], false);
-    const vendorCol = chooseColumn(headers, ['Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Supplier', 'Standard Vendor', 'Standard Provider', 'Service Vendor', 'Service Provider'], false);
-    const chargesCol = chooseColumn(headers, ['Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Standard Charges', 'Standard Price', 'Service Charges', 'Service Price', 'Charge'], false);
+    const vendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Standard Service Vendor', 'Standard Service Provider', 'Vendor / Provider', 'Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Supplier', 'Standard Vendor', 'Standard Provider', 'Service Vendor', 'Service Provider'], false);
+    const chargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Standard Service Charges', 'Standard Service Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Standard Charges', 'Standard Price', 'Service Charges', 'Service Price', 'Charge'], false);
     const records = [];
     for (let rowIndex = 1; rowIndex < matrix.length; rowIndex++) {
       const row = matrix[rowIndex] || [];
@@ -297,8 +298,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       const standardCol = chooseColumn(headers, ['Standardized Service Name', 'Standarized Service Name'], false);
       const groupCol = chooseColumn(headers, ['Standard Group (Reference)', 'Group'], false);
       const subgroupCol = chooseColumn(headers, ['Standard Sub Group (Reference)', 'Sub Group'], false);
-      const vendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Standard Vendor', 'Standard Provider'], false);
-      const chargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge'], false);
+      const vendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Standard Service Vendor', 'Standard Service Provider', 'Vendor / Provider', 'Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Supplier', 'Standard Vendor', 'Standard Provider', 'Service Vendor', 'Service Provider'], false);
+      const chargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Standard Service Charges', 'Standard Service Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge', 'Standard Charges', 'Standard Price', 'Service Charges', 'Service Price'], false);
       const candidatesByName = new Map();
       for (const row of matrix.slice(1)) {
         if (normalize(getCell(row, statusCol)) !== 'match') continue;
@@ -340,8 +341,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       if (decisionCol == null || nameCol == null || codeCol == null) continue;
       const groupCol = chooseColumn(headers, ['Vendor Group'], false);
       const subgroupCol = chooseColumn(headers, ['Vendor Sub Group'], false);
-      const standardVendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Standard Vendor', 'Vendor', 'Provider'], false);
-      const standardChargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount'], false);
+      const standardVendorCol = chooseColumn(headers, ['Standard Service Vendor / Provider', 'Standard Service Vendor', 'Standard Service Provider', 'Vendor / Provider', 'Standard Vendor', 'Vendor', 'Provider', 'Vendor Name', 'Provider Name', 'Supplier', 'Standard Provider', 'Service Vendor', 'Service Provider'], false);
+      const standardChargesCol = chooseColumn(headers, ['Standard Service Charges / Price', 'Standard Service Charges', 'Standard Service Price', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Standard Charges', 'Standard Price', 'Service Charges', 'Service Price', 'Charge'], false);
       for (const row of matrix.slice(1)) {
         if (normalize(getCell(row, decisionCol)) !== 'approved') continue;
         const sourceName = getCell(row, nameCol);
@@ -422,8 +423,8 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     const existingCodeCol = chooseColumn(headers, ['Service Code', 'Standardized Service Code', 'Ser. Code'], false);
     const groupCol = chooseColumn(headers, ['Group', 'Vendor Group'], false);
     const subgroupCol = chooseColumn(headers, ['Sub Group', 'Subgroup', 'Vendor Sub Group'], false);
-    const vendorCol = chooseColumn(headers, ['Vendor Name', 'Provider Name'], false);
-    const chargesCol = chooseColumn(headers, ['Vendor Charges', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge'], false);
+    const vendorCol = chooseColumn(headers, ['Vendor Name', 'Provider Name', 'Vendor', 'Provider', 'Supplier', 'Standard Service Vendor / Provider', 'Standard Service Vendor', 'Standard Service Provider', 'Vendor / Provider', 'Service Vendor', 'Service Provider'], false);
+    const chargesCol = chooseColumn(headers, ['Vendor Charges', 'Charges', 'Price', 'Rate', 'Cost', 'Fee', 'Amount', 'Charge', 'Standard Service Charges / Price', 'Standard Service Charges', 'Standard Service Price'], false);
     const rows = matrix.slice(1).map((row, index) => ({
       sourceRowNumber: index + 2,
       rawName: getCell(row || [], serviceCol),
@@ -763,20 +764,16 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     });
 
     const clientHeaders = [
-      'Vendor Name',
-      'Original Vendor Service Name',
-      'Vendor Service Code',
-      'Vendor Charges',
-      'Suggested Standardized Service Name',
-      'Suggested Standard Code',
-      'Standard Service Group',
-      'Standard Service Subgroup',
-      'Standard Service Vendor / Provider',
-      'Standard Service Charges / Price',
-      'Match Status',
-      'Match Confidence / Score',
-      'Match Explanation',
-      'Review Reason'
+      'Original Service Name',
+      'Suggested Code to Select',
+      'Suggested Service Name',
+      'Group',
+      'Subgroup',
+      'Vendor',
+      'Charges',
+      'Match Percentage',
+      'Review Status',
+      'Recommended Next Action'
     ];
     const clientAoa = [];
     clientAoa.push([sanitizeExcelText('Client Report - Service Code Match Results')]);
@@ -790,55 +787,47 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     clientAoa.push(clientHeaders.map(sanitizeExcelText));
     outputRows.forEach((row, index) => {
       const sourceRow = (sourceRows && sourceRows[index]) || {};
-      const vendorName = text(sourceRow.vendorName || sourceRow.Vendor || sourceRow['Vendor Name'] || row['Vendor'] || row['Vendor Name'] || '');
       const originalServiceName = text(row['Original Service Name'] || sourceRow.rawName || sourceRow['Service Name'] || '');
-      const vendorServiceCode = text(sourceRow.existingCode || sourceRow['Service Code'] || '');
-      const vendorCharges = text(sourceRow.sourceCharges || sourceRow.charges || sourceRow['Vendor Charges'] || row['Vendor Charges'] || '');
       const suggestedStandardName = text(row['Auto Candidate Standardized Service Name'] || row['Auto Candidate Service Display Name'] || '');
-      const suggestedCode = text(row['Auto Candidate Service Code'] || '');
+      const suggestedCodeRaw = text(row['Auto Candidate Service Code'] || '');
+      const statusText = String(row['Auto Match Status / Review Required'] || '');
+      const isAmbiguous = statusText.toUpperCase().includes('AMBIGUOUS');
+      const hasCandidate = !isBlank(suggestedCodeRaw) && !isAmbiguous && !isBlank(suggestedStandardName);
+      const suggestedCode = hasCandidate ? suggestedCodeRaw : '';
       const standardGroup = text(row['Auto Candidate Group'] || '');
       const standardSubgroup = text(row['Auto Candidate Sub Group'] || '');
-      const standardVendor = text(row['Auto Candidate Standard Service Vendor / Provider'] || row['Auto Candidate Standard Vendor'] || row['Standard Service Vendor / Provider'] || '');
-      const standardCharges = text(row['Auto Candidate Standard Service Charges / Price'] || row['Auto Candidate Standard Charges'] || row['Standard Service Charges / Price'] || '');
-      const matchStatus = clientReviewStatus(row['Auto Match Status / Review Required']);
+      const standardVendorRaw = text(row['Auto Candidate Standard Service Vendor / Provider'] || row['Auto Candidate Standard Vendor'] || row['Standard Service Vendor / Provider'] || '');
+      const standardChargesRaw = text(row['Auto Candidate Standard Service Charges / Price'] || row['Auto Candidate Standard Charges'] || row['Standard Service Charges / Price'] || '');
+      const standardVendor = hasCandidate ? (standardVendorRaw || 'Not provided in reference catalogue') : 'Not applicable';
+      const standardCharges = hasCandidate ? (standardChargesRaw || 'Not provided in reference catalogue') : 'Not applicable';
+      const matchStatus = clientReviewStatus(statusText);
       const score = Number(row['Auto Match Score']) || 0;
-      const explanation = text(row['Clinical Equivalence Explanation'] || row['Text Match Evidence'] || row['Auto Match Method'] || '');
-      const reviewReason = text(row['Decision Reason'] || row['Critical Differences'] || row['Missing Attributes'] || recommendedAction(row) || '');
-      // Leave suggested standard-service fields blank when there is no reliable candidate.
-      const hasCandidate = !isBlank(suggestedCode) || !isBlank(suggestedStandardName);
+      const nextAction = text(recommendedAction(row) || row['AI Recommendation'] || '');
       clientAoa.push([
-        sanitizeExcelText(vendorName),
         sanitizeExcelText(originalServiceName),
-        sanitizeExcelText(vendorServiceCode),
-        sanitizeExcelText(vendorCharges),
+        sanitizeExcelText(suggestedCode),
         sanitizeExcelText(hasCandidate ? suggestedStandardName : ''),
-        sanitizeExcelText(hasCandidate ? suggestedCode : ''),
         sanitizeExcelText(hasCandidate ? standardGroup : ''),
         sanitizeExcelText(hasCandidate ? standardSubgroup : ''),
-        sanitizeExcelText(hasCandidate ? standardVendor : ''),
-        sanitizeExcelText(hasCandidate ? standardCharges : ''),
-        sanitizeExcelText(matchStatus),
+        sanitizeExcelText(standardVendor),
+        sanitizeExcelText(standardCharges),
         score,
-        sanitizeExcelText(explanation),
-        sanitizeExcelText(reviewReason)
+        sanitizeExcelText(matchStatus),
+        sanitizeExcelText(nextAction)
       ]);
     });
     const clientWorksheet = XLSX.utils.aoa_to_sheet(clientAoa);
     clientWorksheet['!cols'] = [
-      { wch: 24 },
       { wch: 40 },
       { wch: 20 },
-      { wch: 16 },
       { wch: 40 },
       { wch: 20 },
-      { wch: 22 },
-      { wch: 22 },
+      { wch: 20 },
       { wch: 28 },
       { wch: 22 },
-      { wch: 28 },
       { wch: 12 },
-      { wch: 46 },
-      { wch: 40 }
+      { wch: 28 },
+      { wch: 46 }
     ];
     const clientLastRow = clientAoa.length - 1;
     const clientLastCol = clientHeaders.length - 1;
@@ -864,12 +853,12 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
     }
     outputRows.forEach((row, index) => {
       const r = clientHeaderRow + 1 + index;
-      const scoreAddress = XLSX.utils.encode_cell({ r, c: 11 });
+      const scoreAddress = XLSX.utils.encode_cell({ r, c: 9 });
       if (clientWorksheet[scoreAddress]) {
         clientWorksheet[scoreAddress].z = '0.##"%"';
         clientWorksheet[scoreAddress].s = { alignment: { horizontal: 'center' } };
       }
-      const statusAddress = XLSX.utils.encode_cell({ r, c: 10 });
+      const statusAddress = XLSX.utils.encode_cell({ r, c: 8 });
       if (clientWorksheet[statusAddress]) {
         clientWorksheet[statusAddress].s = {
           fill: { patternType: 'solid', fgColor: { rgb: reviewStatusFill(clientWorksheet[statusAddress].v) } },
@@ -899,7 +888,7 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       delete workbook.Sheets[auditSheetName];
       workbook.SheetNames = workbook.SheetNames.filter(name => name !== auditSheetName);
     }
-    const auditHeaders = outputRows.length ? Object.keys(outputRows[0]) : [];
+    const auditHeaders = outputRows.length ? Object.keys(outputRows[0]).filter(header => header !== 'Auto Candidate Standard Service Vendor / Provider' && header !== 'Auto Candidate Standard Vendor') : [];
     const auditAoa = [auditHeaders.map(sanitizeExcelText)];
     outputRows.forEach(row => {
       auditAoa.push(auditHeaders.map(header => {
@@ -935,6 +924,36 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
         workbook.Workbook.Sheets.forEach(sheet => {
           if (sheet) delete sheet.CodeName;
         });
+      }
+    }
+    if (window.VendorValidator && vendorReference && Array.isArray(sourceRows)) {
+      const seenVendors = new Set();
+      const vvAoa = [['Original Vendor Name', 'Normalized Name', 'Validation Status', 'Canonical Name', 'Suggested Canonical Name', 'Confidence', 'Reason', 'Review Required']];
+      sourceRows.forEach(sourceRow => {
+        const vendorName = text(sourceRow.vendorName || sourceRow.Vendor || sourceRow['Vendor Name'] || '');
+        if (!vendorName || seenVendors.has(vendorName)) return;
+        seenVendors.add(vendorName);
+        const result = window.VendorValidator.validate(vendorName, vendorReference);
+        vvAoa.push([
+          sanitizeExcelText(result.original),
+          sanitizeExcelText(result.normalized),
+          sanitizeExcelText(result.status),
+          sanitizeExcelText(result.canonical || 'Not in directory'),
+          sanitizeExcelText(result.suggestedCanonical || ''),
+          Number(result.confidence || 0),
+          sanitizeExcelText(result.reason),
+          result.reviewRequired ? 'Yes' : 'No'
+        ]);
+      });
+      if (vvAoa.length > 1) {
+        const vvSheet = XLSX.utils.aoa_to_sheet(vvAoa);
+        vvSheet['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 12 }, { wch: 46 }, { wch: 12 }];
+        vvSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: vvAoa.length - 1, c: 7 } }) };
+        vvSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+        const vvName = 'Vendor Validation';
+        if (workbook.Sheets[vvName]) { delete workbook.Sheets[vvName]; workbook.SheetNames = workbook.SheetNames.filter(name => name !== vvName); }
+        workbook.Sheets[vvName] = vvSheet;
+        if (!workbook.SheetNames.includes(vvName)) workbook.SheetNames.push(vvName);
       }
     }
     return workbook;
@@ -1047,11 +1066,16 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
       : '');
   });
 
-  $('download-btn').addEventListener('click', async () => {
-    if (!latestOutputWorkbook) return;
-    try {
-      {
-        const workbookData = XLSX.write(latestOutputWorkbook, { bookType: 'xlsx', type: 'array', compression: true });
+    $('download-btn').addEventListener('click', async () => {
+      if (!latestOutputWorkbook) return;
+      const btn = $('download-btn');
+      const originalLabel = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Preparing download…';
+      try {
+        toast('Preparing Excel download…');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const workbookData = XLSX.write(latestOutputWorkbook, { bookType: 'xlsx', type: 'array', compression: false });
         const blob = new Blob([workbookData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
@@ -1060,15 +1084,22 @@ const OUTPUT_KEYS_BY_HEADER = Object.fromEntries(Object.entries(OUTPUT_HEADERS).
         document.body.appendChild(anchor);
         anchor.click();
         document.body.removeChild(anchor);
-        URL.revokeObjectURL(url);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast('Download started: ' + latestOutputName);
+      } catch (error) { toast(`Download failed: ${error.message}`); }
+      finally {
+        btn.disabled = false;
+        btn.innerHTML = originalLabel;
       }
-      toast('Excel output download started');
-    } catch (error) { toast(`Download failed: ${error.message}`); }
-  });
+    });
 
   async function boot() {
     if (!window.XLSX) setMessage($('master-message'), 'Excel reader could not load from the SheetJS CDN. Check your internet connection and refresh.', 'error');
     await refreshSavedMaster();
+    try {
+      const response = await fetch('./vendor-reference.json');
+      if (response.ok) vendorReference = await response.json();
+    } catch (error) { /* vendor reference is optional */ }
   }
   if (typeof globalThis !== 'undefined') globalThis.buildOutputWorkbook = buildOutputWorkbook;
   if (typeof window !== 'undefined') window.buildOutputWorkbook = buildOutputWorkbook;

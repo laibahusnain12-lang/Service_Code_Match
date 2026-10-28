@@ -613,6 +613,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
     result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
     result['Auto Candidate Standard Vendor'] = detail.standardVendor;
@@ -662,6 +670,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
     result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
     result['Auto Candidate Standard Vendor'] = detail.standardVendor;
@@ -712,6 +728,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
     result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
     result['Auto Candidate Standard Vendor'] = detail.standardVendor;
@@ -736,6 +760,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
     result['Auto Candidate Service Display Name'] = detail.display;
     result['Auto Candidate Group'] = detail.group;
     result['Auto Candidate Sub Group'] = detail.subgroup;
+
+    result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+    result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+    result['Auto Candidate Standard Charges'] = detail.standardCharges;
     result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
     result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
     result['Auto Candidate Standard Vendor'] = detail.standardVendor;
@@ -768,6 +800,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
       result['Auto Candidate Service Display Name'] = detail.display;
       result['Auto Candidate Group'] = detail.group;
       result['Auto Candidate Sub Group'] = detail.subgroup;
+
+      result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+      result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+      result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+      result['Auto Candidate Standard Charges'] = detail.standardCharges;
       result['Auto Match Score'] = 99;
       result['Auto Match Method'] = 'Clinical medical equivalence (service, modality, anatomy, purpose)';
       result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, signatureKeys.map(key => [key, 99]));
@@ -833,6 +873,14 @@ function matchServiceCore(rawName, standardizedName, existingCode, ctx, fuzzyFin
   result['Auto Candidate Service Display Name'] = detail.display;
   result['Auto Candidate Group'] = detail.group;
   result['Auto Candidate Sub Group'] = detail.subgroup;
+
+  result['Auto Candidate Standard Service Vendor / Provider'] = detail.standardVendor;
+
+  result['Auto Candidate Standard Service Charges / Price'] = detail.standardCharges;
+
+  result['Auto Candidate Standard Vendor'] = detail.standardVendor;
+
+  result['Auto Candidate Standard Charges'] = detail.standardCharges;
   result['Auto Match Score'] = Math.round(bestScore * 100) / 100;
   result['Auto Match Method'] = `Fuzzy name similarity (${sourceForKey.get(bestKey) || 'source name'})`;
   result['Auto Candidate Alternatives'] = formatAlternatives(ctx.nameMap, sorted, 8);

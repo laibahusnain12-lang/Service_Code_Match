@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-10-28",
+  "policy": {
+    "autoCorrect": false,
+    "maxEditDistanceForSuggestion": 2
+  },
+  "vendors": [
+    {
+      "canonical": "Ibnsina",
+      "aliases": [
+        "Ibn Sina",
+        "IBN SINA",
+        "Ibn-Sina"
+      ],
+      "category": "Pharmaceutical / medical supply vendor",
+      "city": null,
+      "website": null,
+      "sourceReference": "Configured canonical spelling policy; replace with verified official source before production use.",
+      "verificationDate": "2026-10-28",
+      "verificationStatus": "verified"
+    }
+  ]
+}
